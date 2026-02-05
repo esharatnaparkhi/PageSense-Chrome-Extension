@@ -1,0 +1,9 @@
+/* Content Script Styles - Injected into page */
+
+#pagesense-floating-button {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif !important;
+}
+
+#pagesense-widget-iframe {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif !important;
+}
