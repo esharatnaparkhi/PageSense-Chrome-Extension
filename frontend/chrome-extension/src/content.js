@@ -1,15 +1,23 @@
 /**
  * Content Script for PageSense
  * Injects widget iframe and handles page content extraction
+ * MULTI-PAGE SUPPORT
  */
 
 let widgetIframe = null;
 let isWidgetVisible = false;
+let currentPageInfo = null;
 
 // Initialize widget on page load
 initializeWidget();
 
 function initializeWidget() {
+  // Store current page info
+  currentPageInfo = {
+    url: window.location.href,
+    title: document.title
+  };
+
   // Create widget iframe
   widgetIframe = document.createElement('iframe');
   widgetIframe.id = 'pagesense-widget-iframe';
@@ -23,11 +31,9 @@ function initializeWidget() {
   widgetIframe.style.borderRadius = "16px";
   widgetIframe.style.background = "white";
   widgetIframe.style.boxShadow = "0 8px 32px rgba(0, 0, 0, 0.2)";
-
   widgetIframe.style.setProperty("z-index", "2147483647", "important");
   widgetIframe.style.setProperty("display", "none", "important");
-
-    
+  
   document.body.appendChild(widgetIframe);
   
   // Create floating button
@@ -35,6 +41,11 @@ function initializeWidget() {
   
   // Listen for messages from widget
   window.addEventListener('message', handleWidgetMessage);
+  
+  // Send initial page info when iframe loads
+  widgetIframe.addEventListener('load', () => {
+    sendPageInfo();
+  });
 }
 
 function createFloatingButton() {
@@ -58,9 +69,9 @@ function createFloatingButton() {
   button.style.display = "flex";
   button.style.alignItems = "center";
   button.style.justifyContent = "center";
-
+  button.style.boxShadow = "0 4px 16px rgba(102, 126, 234, 0.4)";
+  button.style.transition = "all 0.3s ease";
   button.style.setProperty("z-index", "2147483646", "important");
-
   
   button.addEventListener('mouseenter', () => {
     button.style.transform = 'scale(1.1)';
@@ -82,15 +93,22 @@ function toggleWidget() {
   widgetIframe.style.display = isWidgetVisible ? 'block' : 'none';
   
   if (isWidgetVisible) {
-    // Send page info to widget
-    const pageInfo = {
-      url: window.location.href,
-      title: document.title
-    };
-    
+    // Always send current page info when opening
+    sendPageInfo();
+  }
+}
+
+function sendPageInfo() {
+  // Update current page info
+  currentPageInfo = {
+    url: window.location.href,
+    title: document.title
+  };
+  
+  if (widgetIframe && widgetIframe.contentWindow) {
     widgetIframe.contentWindow.postMessage({
       type: 'PAGE_INFO',
-      data: pageInfo
+      data: currentPageInfo
     }, '*');
   }
 }
@@ -120,16 +138,20 @@ function handleWidgetMessage(event) {
 }
 
 async function extractPageContent() {
-  // Get page HTML
-  const html = document.documentElement.outerHTML;
   const url = window.location.href;
   const title = document.title;
-  
-  // Send to background script for processing
+
+  const isPDF =
+    url.endsWith(".pdf") ||
+    document.contentType === "application/pdf";
+
   return new Promise((resolve) => {
     chrome.runtime.sendMessage({
-      type: 'EXTRACT_CONTENT',
-      data: { url, html }
+      type: isPDF ? 'EXTRACT_PDF' : 'EXTRACT_CONTENT',
+      data: {
+        url,
+        html: isPDF ? null : document.documentElement.outerHTML
+      }
     }, (response) => {
       resolve({
         ...response,
@@ -167,3 +189,41 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     toggleWidget();
   }
 });
+
+// Listen for page navigation (for SPAs)
+let lastUrl = location.href;
+new MutationObserver(() => {
+  const url = location.href;
+  if (url !== lastUrl) {
+    lastUrl = url;
+    
+    // Update page info when URL changes
+    currentPageInfo = {
+      url: window.location.href,
+      title: document.title
+    };
+    
+    // Send updated page info to widget if it's open
+    if (isWidgetVisible) {
+      sendPageInfo();
+    }
+  }
+}).observe(document, { subtree: true, childList: true });
+
+// Also listen for title changes
+const titleObserver = new MutationObserver(() => {
+  if (document.title !== currentPageInfo.title) {
+    currentPageInfo.title = document.title;
+    if (isWidgetVisible) {
+      sendPageInfo();
+    }
+  }
+});
+
+if (document.querySelector('title')) {
+  titleObserver.observe(document.querySelector('title'), {
+    subtree: true,
+    characterData: true,
+    childList: true
+  });
+}

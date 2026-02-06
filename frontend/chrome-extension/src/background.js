@@ -1,11 +1,19 @@
 /**
  * Background Service Worker for PageSense
  * Handles API communication and extension coordination
- * FULL DEBUG VERSION
+ * FULL MULTI-CHAT MULTI-PAGE SUPPORT
  */
 
-const API_HOST = "http://127.0.0.1:8000"; // safest for extensions
+const API_HOST = "http://127.0.0.1:8000";
 const API_BASE_URL = `${API_HOST}/api/v1`;
+
+/* GLOBAL SESSION (shared across tabs) */
+let globalSession = {
+  currentChatId: null,
+  chatSummaries: {}, // { chatId: [{ pageUrl, pageTitle, summary, timestamp }] }
+  chatMessages: {}, // { chatId: [{ role, content, pageUrl, pageTitle }] }
+  pageChunks: {} // { pageUrl: chunks[] }
+};
 
 console.log("[INIT] Background worker started");
 console.log("[INIT] API BASE:", API_BASE_URL);
@@ -19,12 +27,10 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
   /* ---------------- GOOGLE LOGIN ---------------- */
   if (request.type === "GOOGLE_LOGIN") {
-
     console.log("[AUTH] Starting Google OAuth flow...");
 
     googleSignIn()
       .then(async (idToken) => {
-
         console.log("[AUTH] Google ID Token received:", idToken?.slice(0, 25));
 
         const url = `${API_BASE_URL}/auth/google`;
@@ -74,7 +80,51 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     return true; // KEEP CHANNEL OPEN
   }
 
-  /* ---------------- EXTRACT ---------------- */
+  /* ---------------- SESSION GET ---------------- */
+  if (request.type === "GET_SESSION") {
+    console.log("[SESSION] Returning session:", globalSession);
+    sendResponse(globalSession);
+    return;
+  }
+
+  /* ---------------- SESSION SET ---------------- */
+  if (request.type === "SET_SESSION") {
+    console.log("[SESSION] Updating session:", request.data);
+    globalSession = {
+      ...globalSession,
+      ...request.data
+    };
+    
+    // Persist to storage
+    chrome.storage.local.set({ globalSession });
+    
+    sendResponse({ ok: true });
+    return;
+  }
+
+  /* ---------------- GENERIC API CALL ---------------- */
+  if (request.type === "API_CALL") {
+    apiRequest(
+      request.data.endpoint,
+      request.data.method,
+      request.data.body
+    )
+    .then(sendResponse)
+    .catch(err => sendResponse({ error: err.message }));
+    return true;
+  }
+
+  /* ---------------- EXTRACT PDF ---------------- */
+  if (request.type === "EXTRACT_PDF") {
+    apiRequest("/extract/pdf", "POST", {
+      url: request.data.url
+    })
+    .then(sendResponse)
+    .catch(error => sendResponse({ error: error.message }));
+    return true;
+  }
+
+  /* ---------------- EXTRACT CONTENT ---------------- */
   if (request.type === 'EXTRACT_CONTENT') {
     handleExtractContent(request.data)
       .then(sendResponse)
@@ -119,6 +169,15 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   }
 });
 
+/* ============================================================
+   LOAD SESSION FROM STORAGE ON STARTUP
+============================================================ */
+chrome.storage.local.get(['globalSession'], (result) => {
+  if (result.globalSession) {
+    globalSession = result.globalSession;
+    console.log("[INIT] Loaded session from storage:", globalSession);
+  }
+});
 
 /* ============================================================
    GOOGLE SIGN IN FLOW
@@ -174,7 +233,6 @@ function googleSignIn() {
   });
 }
 
-
 /* ============================================================
    AUTH TOKEN HANDLER
 ============================================================ */
@@ -183,7 +241,6 @@ async function getAuthToken() {
   console.log("[AUTH] Token from storage:", result.authToken?.slice(0, 20));
   return result.authToken || null;
 }
-
 
 /* ============================================================
    API REQUEST WRAPPER
@@ -225,22 +282,33 @@ async function apiRequest(endpoint, method = 'GET', data = null) {
   return JSON.parse(raw);
 }
 
-
 /* ============================================================
    HANDLERS
 ============================================================ */
 
 async function handleExtractContent({ url, html }) {
-  console.log("[EXTRACT] Request received");
-  return apiRequest('/extract/', 'POST', {
+  console.log("[EXTRACT] Request received for URL:", url);
+  const result = await apiRequest('/extract/', 'POST', {
     url,
     html,
     include_images: false
   });
+  
+  // Store chunks in session
+  if (result?.text_chunks) {
+    globalSession.pageChunks = {
+      ...globalSession.pageChunks,
+      [url]: result.text_chunks
+    };
+    await chrome.storage.local.set({ globalSession });
+    console.log("[EXTRACT] Stored chunks for:", url);
+  }
+  
+  return result;
 }
 
 async function handleSummarize({ chunks, style, chatId, url }) {
-  console.log("[SUMMARIZE] Request received");
+  console.log("[SUMMARIZE] Request received for chat:", chatId);
   return apiRequest('/summarize/', 'POST', {
     page_id: 1,
     url: url || "",
@@ -252,7 +320,10 @@ async function handleSummarize({ chunks, style, chatId, url }) {
 }
 
 async function handleAskQuestion({ question, chunks, chatId, chatHistory }) {
-  console.log("[QA] Request received");
+  console.log("[QA] Request received for chat:", chatId);
+  console.log("[QA] Number of chunks:", chunks?.length);
+  console.log("[QA] Chat history length:", chatHistory?.length);
+  
   return apiRequest('/qa/', 'POST', {
     question,
     chunks,
@@ -270,10 +341,14 @@ async function handleMultiPageQuestion({ question, urls, chatId }) {
   });
 }
 
-
 /* ============================================================
    INSTALL EVENT
 ============================================================ */
 chrome.runtime.onInstalled.addListener((details) => {
   console.log("[INIT] Extension installed:", details.reason);
+  
+  // Initialize empty session on fresh install
+  if (details.reason === 'install') {
+    chrome.storage.local.set({ globalSession });
+  }
 });
