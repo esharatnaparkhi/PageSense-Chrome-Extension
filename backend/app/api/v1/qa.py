@@ -133,16 +133,21 @@ async def answer_question(
                 chat_id=chat.id,
                 role="user",
                 content=request.question,
-                extra_data={},
+                extra_data={
+                    "url": request.url or "",
+                    "page_title": request.page_title or "",
+                },
             )
             db.add(user_msg)
-            
+
             # Add assistant answer
             assistant_msg = Message(
                 chat_id=chat.id,
                 role="assistant",
                 content=result["answer"],
                 extra_data={
+                    "url": request.url or "",
+                    "page_title": request.page_title or "",
                     "sources": [s.model_dump() for s in result["sources"]],
                     "confidence": result["confidence"],
                 },

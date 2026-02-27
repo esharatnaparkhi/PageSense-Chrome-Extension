@@ -64,6 +64,7 @@ class ExtractResponse(BaseModel):
 class SummarizeRequest(BaseModel):
     page_id: Optional[int] = None
     url: Optional[str] = None
+    page_title: Optional[str] = None
     chunks: Optional[List[TextChunk]] = None
     summary_style: str = Field(default="short", pattern="^(short|long|bullet)$")
     max_tokens: int = Field(default=512, ge=50, le=2048)
@@ -97,6 +98,7 @@ class QARequest(BaseModel):
     question: str
     page_id: Optional[int] = None
     url: Optional[str] = None
+    page_title: Optional[str] = None
     chunks: Optional[List[TextChunk]] = None
     chat_id: Optional[int] = None
     chat_history: Optional[List[ChatMessage]] = None
@@ -133,12 +135,34 @@ class MessageResponse(BaseModel):
     role: str
     content: str
     extra_data: Dict[str, Any]
+    # url and page_title are surfaced from extra_data for convenience
+    url: Optional[str] = None
+    page_title: Optional[str] = None
     created_at: datetime
 
 
 class ChatHistoryResponse(BaseModel):
     chat: ChatResponse
     messages: List[MessageResponse]
+
+
+# ============================================================================
+# Page Visit Schemas
+# ============================================================================
+
+class PageVisitCreate(BaseModel):
+    url: str
+    title: Optional[str] = None
+    summary: Optional[str] = None
+
+
+class PageVisitResponse(BaseModel):
+    id: int
+    chat_id: int
+    url: str
+    title: Optional[str]
+    summary: Optional[str]
+    visited_at: datetime
 
 
 # ============================================================================

@@ -10,7 +10,7 @@ from app.core.security import get_current_user
 from app.core.redis_client import get_cache, set_cache, increment_rate_limit
 from app.schemas.schemas import SummarizeRequest, SummarizeResponse
 from app.services.llm_service import LLMService
-from app.models.models import User, Chat, Message
+from app.models.models import User, Chat, Message, PageVisit
 from app.core.config import settings
 import hashlib
 
@@ -121,9 +121,36 @@ async def summarize_content(
                 chat_id=chat.id,
                 role="assistant",
                 content=result["summary"],
-                extra_data={"type": "summary", "sources": [s.model_dump() for s in result["sources"]]},
+                extra_data={
+                    "type": "summary",
+                    "url": request.url or "",
+                    "page_title": request.page_title or "",
+                    "sources": [s.model_dump() for s in result["sources"]],
+                },
             )
             db.add(summary_msg)
+
+            # Record / update page visit with this summary
+            if request.url:
+                from sqlalchemy import and_
+                existing_visit = await db.execute(
+                    select(PageVisit).where(
+                        and_(PageVisit.chat_id == chat.id, PageVisit.url == request.url)
+                    )
+                )
+                visit = existing_visit.scalar_one_or_none()
+                if visit:
+                    visit.summary = result["summary"]
+                    if request.page_title:
+                        visit.title = request.page_title
+                else:
+                    db.add(PageVisit(
+                        chat_id=chat.id,
+                        url=request.url,
+                        title=request.page_title,
+                        summary=result["summary"],
+                    ))
+
             await db.commit()
-    
+
     return response

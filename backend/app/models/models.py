@@ -43,21 +43,37 @@ class Chat(Base):
     # Relationships
     user = relationship("User", back_populates="chats")
     messages = relationship("Message", back_populates="chat", cascade="all, delete-orphan")
+    page_visits = relationship("PageVisit", back_populates="chat", cascade="all, delete-orphan")
 
 
 class Message(Base):
     """Message model - max 50 per chat"""
     __tablename__ = "messages"
-    
+
     id = Column(Integer, primary_key=True, index=True)
     chat_id = Column(Integer, ForeignKey("chats.id"), nullable=False)
     role = Column(String(50), nullable=False)  # user, assistant, system
     content = Column(Text, nullable=False)
-    extra_data = Column(JSON, default=dict)  # sources, citations, etc.
+    extra_data = Column(JSON, default=dict)  # sources, citations, url, page_title, type, etc.
     created_at = Column(DateTime, default=datetime.utcnow)
-    
+
     # Relationships
     chat = relationship("Chat", back_populates="messages")
+
+
+class PageVisit(Base):
+    """Tracks unique pages visited within each chat session"""
+    __tablename__ = "page_visits"
+
+    id = Column(Integer, primary_key=True, index=True)
+    chat_id = Column(Integer, ForeignKey("chats.id"), nullable=False)
+    url = Column(String(2048), nullable=False)
+    title = Column(String(1024), nullable=True)
+    summary = Column(Text, nullable=True)  # Latest summary generated for this page in this chat
+    visited_at = Column(DateTime, default=datetime.utcnow)
+
+    # Relationships
+    chat = relationship("Chat", back_populates="page_visits")
 
 
 class PageIndex(Base):

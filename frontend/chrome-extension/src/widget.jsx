@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import ReactDOM from 'react-dom/client';
 import {
   MessageCircle,
@@ -13,8 +13,27 @@ import {
 } from 'lucide-react';
 import './widget.css';
 
-const API_BASE = "http://127.0.0.1:8000/api/v1";
+/* ================================================================
+   INTENT DETECTION
+   Decides whether a question needs cross-page context or just the
+   current page.
+================================================================ */
+const MULTI_PAGE_KEYWORDS = [
+  'compare', 'comparison', 'difference', 'differ',
+  'previous page', 'last page', 'other page', 'another page',
+  'both pages', 'between pages', 'across pages',
+  'vs', 'versus', 'than the previous', 'compared to',
+  'earlier page', 'pages i visited', 'all pages'
+];
 
+function isMultiPageQuestion(question) {
+  const q = question.toLowerCase();
+  return MULTI_PAGE_KEYWORDS.some(k => q.includes(k));
+}
+
+/* ================================================================
+   WIDGET COMPONENT
+================================================================ */
 const Widget = () => {
 
   /* ================= AUTH ================= */
@@ -37,11 +56,12 @@ const Widget = () => {
   const [chatSummaries, setChatSummaries] = useState({});
 
   /* ================= Q&A STATE (per chat) ================= */
-  // Format: { chatId: [{ role, content, pageUrl, pageTitle }] }
+  // Loaded from backend on init/chat-switch; kept in sync with DB.
+  // Format: { chatId: [{ role, content, pageUrl, pageTitle, sources }] }
   const [chatMessages, setChatMessages] = useState({});
 
-  /* ================= EXTRACTED CHUNKS (per page) ================= */
-  // Format: { pageUrl: chunks[] }
+  /* ================= EXTRACTED CHUNKS (per page URL) ================= */
+  // Format: { pageUrl: chunks[] }  — NOT stored in backend, lives in session
   const [pageChunks, setPageChunks] = useState({});
 
   const [question, setQuestion] = useState("");
@@ -52,6 +72,70 @@ const Widget = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [chatMessages, currentChatId]);
 
+  /* ================= LOAD MESSAGES FROM BACKEND ================= */
+  const loadChatMessages = useCallback(async (chatId) => {
+    if (!chatId) return;
+    const res = await chrome.runtime.sendMessage({
+      type: "API_CALL",
+      data: { endpoint: `/chat/${chatId}`, method: "GET" }
+    });
+
+    if (res?.messages && Array.isArray(res.messages)) {
+      const messages = res.messages.map(m => ({
+        role: m.role,
+        content: m.content,
+        pageUrl: m.url || m.extra_data?.url || null,
+        pageTitle: m.page_title || m.extra_data?.page_title || null,
+        sources: m.extra_data?.sources || null,
+        type: m.extra_data?.type || null,
+      }));
+      setChatMessages(prev => ({ ...prev, [chatId]: messages }));
+
+      // Rebuild chatSummaries from stored summary messages
+      const summaries = messages
+        .filter(m => m.type === "summary" && m.role === "assistant" && m.pageUrl)
+        .map(m => ({
+          pageUrl: m.pageUrl,
+          pageTitle: m.pageTitle,
+          summary: m.content,
+          timestamp: null,
+        }));
+      if (summaries.length > 0) {
+        setChatSummaries(prev => ({ ...prev, [chatId]: summaries }));
+      }
+    }
+  }, []);
+
+  /* ================= LOAD CHATS FROM BACKEND ================= */
+  const loadChats = useCallback(async () => {
+    const res = await chrome.runtime.sendMessage({
+      type: "API_CALL",
+      data: { endpoint: "/chat/", method: "GET" }
+    });
+
+    if (!res || !Array.isArray(res)) return;
+
+    setChats(res);
+
+    // Restore currentChatId from session, or default to first chat
+    const sessionRes = await new Promise(resolve =>
+      chrome.runtime.sendMessage({ type: "GET_SESSION" }, resolve)
+    );
+
+    let chatId = sessionRes?.currentChatId;
+    if (!chatId && res.length > 0) chatId = res[0].id;
+
+    if (chatId) {
+      setCurrentChatId(chatId);
+      await loadChatMessages(chatId);
+    }
+
+    // Restore page chunks from session (not stored in DB)
+    if (sessionRes?.pageChunks) {
+      setPageChunks(sessionRes.pageChunks);
+    }
+  }, [loadChatMessages]);
+
   /* ================= CHECK AUTH ================= */
   useEffect(() => {
     chrome.storage.local.get(["authToken"], (res) => {
@@ -61,69 +145,15 @@ const Widget = () => {
       }
       setCheckingAuth(false);
     });
-  }, []);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  /* ================= LOAD SESSION FROM BACKGROUND ================= */
+  /* ================= SAVE SESSION (page chunks + currentChatId only) ================= */
   useEffect(() => {
-    if (!isAuthenticated) return;
-
-    chrome.runtime.sendMessage({ type: "GET_SESSION" }, (res) => {
-      if (!res) return;
-      
-      if (res.currentChatId) {
-        setCurrentChatId(res.currentChatId);
-      }
-      
-      if (res.chatSummaries) {
-        setChatSummaries(res.chatSummaries);
-      }
-      
-      if (res.chatMessages) {
-        setChatMessages(res.chatMessages);
-      }
-      
-      if (res.pageChunks) {
-        setPageChunks(res.pageChunks);
-      }
-    });
-  }, [isAuthenticated]);
-
-  /* ================= SAVE SESSION TO BACKGROUND ================= */
-  const saveSession = () => {
     chrome.runtime.sendMessage({
       type: "SET_SESSION",
-      data: {
-        currentChatId,
-        chatSummaries,
-        chatMessages,
-        pageChunks
-      }
+      data: { currentChatId, pageChunks }
     });
-  };
-
-  useEffect(() => {
-    saveSession();
-  }, [currentChatId, chatSummaries, chatMessages, pageChunks]);
-
-  /* ================= LOAD CHATS FROM BACKEND ================= */
-  const loadChats = async () => {
-    const res = await chrome.runtime.sendMessage({
-      type: "API_CALL",
-      data: {
-        endpoint: "/chat/",
-        method: "GET"
-      }
-    });
-
-    if (res && Array.isArray(res)) {
-      setChats(res);
-      
-      // If no current chat, set the first one
-      if (!currentChatId && res.length > 0) {
-        setCurrentChatId(res[0].id);
-      }
-    }
-  };
+  }, [currentChatId, pageChunks]);
 
   /* ================= CREATE NEW CHAT ================= */
   const createNewChat = async () => {
@@ -138,13 +168,8 @@ const Widget = () => {
 
     if (!res?.id) return;
 
-    // Add to chats list
     setChats(prev => [res, ...prev]);
-    
-    // Switch to new chat
     setCurrentChatId(res.id);
-    
-    // Initialize empty data for this chat
     setChatSummaries(prev => ({ ...prev, [res.id]: [] }));
     setChatMessages(prev => ({ ...prev, [res.id]: [] }));
   };
@@ -152,44 +177,31 @@ const Widget = () => {
   /* ================= DELETE CHAT ================= */
   const deleteChat = async (chatId, e) => {
     e.stopPropagation();
-    
+
     const res = await chrome.runtime.sendMessage({
       type: "API_CALL",
-      data: {
-        endpoint: `/chat/${chatId}`,
-        method: "DELETE"
-      }
+      data: { endpoint: `/chat/${chatId}`, method: "DELETE" }
     });
 
     if (res) {
-      // Remove from chats
       setChats(prev => prev.filter(c => c.id !== chatId));
-      
-      // Remove data
-      setChatSummaries(prev => {
-        const updated = { ...prev };
-        delete updated[chatId];
-        return updated;
-      });
-      
-      setChatMessages(prev => {
-        const updated = { ...prev };
-        delete updated[chatId];
-        return updated;
-      });
-      
-      // Switch to another chat if this was active
+      setChatSummaries(prev => { const u = { ...prev }; delete u[chatId]; return u; });
+      setChatMessages(prev => { const u = { ...prev }; delete u[chatId]; return u; });
+
       if (currentChatId === chatId) {
         const remaining = chats.filter(c => c.id !== chatId);
-        setCurrentChatId(remaining.length > 0 ? remaining[0].id : null);
+        const nextId = remaining.length > 0 ? remaining[0].id : null;
+        setCurrentChatId(nextId);
+        if (nextId) loadChatMessages(nextId);
       }
     }
   };
 
   /* ================= SWITCH CHAT ================= */
-  const switchChat = (chatId) => {
+  const switchChat = async (chatId) => {
     setCurrentChatId(chatId);
     setShowChatSidebar(false);
+    await loadChatMessages(chatId);
   };
 
   /* ================= GOOGLE LOGIN ================= */
@@ -226,49 +238,49 @@ const Widget = () => {
 
       if (event.data?.type === "PAGE_CONTENT_EXTRACTED") {
         const data = event.data.data;
-        console.log("[WIDGET] Extracted content:", data);
+        if (data?.text_chunks && data.url) {
+          setPageChunks(prev => ({ ...prev, [data.url]: data.text_chunks }));
 
-        if (data?.text_chunks && pageInfo?.url) {
-          // Store chunks for this page
-          setPageChunks(prev => ({
-            ...prev,
-            [pageInfo.url]: data.text_chunks
-          }));
+          // Record page visit in backend if we have a chat
+          if (currentChatId) {
+            chrome.runtime.sendMessage({
+              type: "API_CALL",
+              data: {
+                endpoint: `/chat/${currentChatId}/page-visit`,
+                method: "POST",
+                body: { url: data.url, title: data.title || null }
+              }
+            });
+          }
         }
       }
     };
 
     window.addEventListener("message", handler);
     return () => window.removeEventListener("message", handler);
-  }, [pageInfo]);
+  }, [pageInfo, currentChatId]);
 
   /* ================= REQUEST EXTRACTION ================= */
   const requestPageContent = () => {
-    console.log("[WIDGET] Requesting page extraction");
     window.parent.postMessage({ type: "EXTRACT_PAGE_CONTENT" }, "*");
+  };
+
+  /* ================= ENSURE CHUNKS FOR URL ================= */
+  const ensureChunks = async (url) => {
+    if (pageChunks[url]?.length > 0) return pageChunks[url];
+    requestPageContent();
+    await new Promise(resolve => setTimeout(resolve, 2000));
+    return pageChunks[url] || null;
   };
 
   /* ================= GENERATE SUMMARY ================= */
   const generateSummary = async () => {
     if (!currentChatId || !pageInfo?.url) return;
 
-    // Check if we already have chunks for this page
-    let chunks = pageChunks[pageInfo.url];
-    
-    if (!chunks || chunks.length === 0) {
-      // Request extraction first
-      requestPageContent();
-      
-      // Wait a bit for extraction to complete
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      
-      // Check again
-      chunks = pageChunks[pageInfo.url];
-      
-      if (!chunks || chunks.length === 0) {
-        alert("Failed to extract page content. Please try again.");
-        return;
-      }
+    const chunks = await ensureChunks(pageInfo.url);
+    if (!chunks) {
+      alert("Failed to extract page content. Please try again.");
+      return;
     }
 
     try {
@@ -277,16 +289,16 @@ const Widget = () => {
       const res = await chrome.runtime.sendMessage({
         type: "SUMMARIZE",
         data: {
-          chunks: chunks,
+          chunks,
           style: "short",
           url: pageInfo.url,
+          pageTitle: pageInfo.title,
           chatId: currentChatId
         }
       });
 
       if (res?.error) throw new Error(res.error);
 
-      // Add summary to this chat's summary list
       const newSummary = {
         pageUrl: pageInfo.url,
         pageTitle: pageInfo.title,
@@ -297,6 +309,21 @@ const Widget = () => {
       setChatSummaries(prev => ({
         ...prev,
         [currentChatId]: [...(prev[currentChatId] || []), newSummary]
+      }));
+
+      // Add the summary as a message so it persists across pages
+      setChatMessages(prev => ({
+        ...prev,
+        [currentChatId]: [
+          ...(prev[currentChatId] || []),
+          {
+            role: "assistant",
+            content: res.summary,
+            pageUrl: pageInfo.url,
+            pageTitle: pageInfo.title,
+            type: "summary"
+          }
+        ]
       }));
 
     } catch (err) {
@@ -318,43 +345,40 @@ const Widget = () => {
       pageTitle: pageInfo.title
     };
 
-    // Add to chat messages
     const updatedMessages = [...(chatMessages[currentChatId] || []), userMessage];
-    setChatMessages(prev => ({
-      ...prev,
-      [currentChatId]: updatedMessages
-    }));
-
+    setChatMessages(prev => ({ ...prev, [currentChatId]: updatedMessages }));
     setQuestion("");
 
-    // Get chunks for ALL pages mentioned in this chat
-    const allPageUrls = [...new Set(updatedMessages.map(m => m.pageUrl).filter(Boolean))];
-    let allChunks = [];
-    
-    for (const url of allPageUrls) {
-      if (pageChunks[url]) {
-        allChunks = [...allChunks, ...pageChunks[url]];
+    // Detect intent: cross-page or current-page only
+    const multiPage = isMultiPageQuestion(question);
+
+    let chunksToSend = [];
+
+    if (multiPage) {
+      // Collect chunks from ALL pages extracted in this chat session
+      const allUrls = Object.keys(pageChunks);
+      for (const url of allUrls) {
+        if (pageChunks[url]?.length > 0) {
+          chunksToSend = [...chunksToSend, ...pageChunks[url]];
+        }
       }
+      // Ensure current page is also included
+      if (!pageChunks[pageInfo.url]) {
+        const cur = await ensureChunks(pageInfo.url);
+        if (cur) chunksToSend = [...chunksToSend, ...cur];
+      }
+    } else {
+      // Current page only
+      chunksToSend = await ensureChunks(pageInfo.url) || [];
     }
 
-    // If no chunks for current page, extract first
-    if (!pageChunks[pageInfo.url]) {
-      requestPageContent();
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      
-      if (pageChunks[pageInfo.url]) {
-        allChunks = [...allChunks, ...pageChunks[pageInfo.url]];
-      }
-    }
-
-    if (allChunks.length === 0) {
+    if (chunksToSend.length === 0) {
       const errorMsg = {
         role: "assistant",
         content: "Failed to extract page content. Please try again.",
         pageUrl: pageInfo.url,
         pageTitle: pageInfo.title
       };
-      
       setChatMessages(prev => ({
         ...prev,
         [currentChatId]: [...updatedMessages, errorMsg]
@@ -365,7 +389,6 @@ const Widget = () => {
     try {
       setLoading(true);
 
-      // Prepare chat history for API
       const chatHistory = updatedMessages.map(m => ({
         role: m.role,
         content: m.content
@@ -375,9 +398,11 @@ const Widget = () => {
         type: "ASK_QUESTION",
         data: {
           question: userMessage.content,
-          chunks: allChunks, // Send all chunks from all pages in this chat
+          chunks: chunksToSend,
           chatId: currentChatId,
-          chatHistory: chatHistory
+          chatHistory,
+          url: pageInfo.url,
+          pageTitle: pageInfo.title
         }
       });
 
@@ -398,14 +423,12 @@ const Widget = () => {
 
     } catch (err) {
       console.error("[WIDGET] QA error:", err);
-      
       const errorMsg = {
         role: "assistant",
         content: "Failed to answer question. Please try again.",
         pageUrl: pageInfo.url,
         pageTitle: pageInfo.title
       };
-      
       setChatMessages(prev => ({
         ...prev,
         [currentChatId]: [...updatedMessages, errorMsg]
@@ -415,9 +438,9 @@ const Widget = () => {
     }
   };
 
-  /* ================= GET CURRENT CHAT SUMMARIES ================= */
+  /* ================= DERIVED STATE ================= */
   const currentSummaries = chatSummaries[currentChatId] || [];
-  const currentMessages = chatMessages[currentChatId] || [];
+  const currentMessages = (chatMessages[currentChatId] || []).filter(m => m.type !== "summary");
 
   /* ================= LOADING ================= */
   if (checkingAuth) {
@@ -439,8 +462,8 @@ const Widget = () => {
           <h2 style={{ marginBottom: '10px' }}>PageSense</h2>
           <p style={{ color: '#666', marginBottom: '30px' }}>AI-powered web assistant</p>
           {authError && <p style={{ color: 'red', marginBottom: '20px' }}>{authError}</p>}
-          <button 
-            className="primary-button" 
+          <button
+            className="primary-button"
             onClick={handleGoogleLogin}
             disabled={loading}
             style={{ width: '100%', maxWidth: '300px' }}
@@ -455,7 +478,7 @@ const Widget = () => {
   /* ================= MAIN UI ================= */
   return (
     <div className="widget-container">
-      
+
       {/* CHAT SIDEBAR */}
       {showChatSidebar && (
         <div className="chat-sidebar-overlay" onClick={() => setShowChatSidebar(false)}>
@@ -466,17 +489,17 @@ const Widget = () => {
                 <X size={18}/>
               </button>
             </div>
-            
+
             <div className="sidebar-content">
               {chats.map(chat => (
-                <div 
+                <div
                   key={chat.id}
                   className={`chat-item ${chat.id === currentChatId ? 'active' : ''}`}
                   onClick={() => switchChat(chat.id)}
                 >
                   <MessageSquare size={16}/>
                   <span>{chat.title}</span>
-                  <button 
+                  <button
                     className="delete-chat-btn"
                     onClick={(e) => deleteChat(chat.id, e)}
                   >
@@ -484,7 +507,7 @@ const Widget = () => {
                   </button>
                 </div>
               ))}
-              
+
               {chats.length === 0 && (
                 <div className="empty-state">
                   <p>No chats yet</p>
@@ -497,24 +520,24 @@ const Widget = () => {
 
       {/* HEADER */}
       <div className="widget-header">
-        <button 
+        <button
           className="sidebar-toggle"
           onClick={() => setShowChatSidebar(true)}
           title="View all chats"
         >
           <MessageSquare size={20}/>
         </button>
-        
+
         <div className="widget-title">
           <Sparkles size={20}/>
           PageSense
         </div>
-        
+
         <div style={{display:"flex", gap:"8px", alignItems: "center"}}>
           <button className="primary-button" onClick={createNewChat} disabled={chats.length >= 3}>
             <Plus size={16}/>
           </button>
-          
+
           <button className="logout-btn" onClick={handleLogout} title="Logout">
             Logout
           </button>
@@ -576,7 +599,6 @@ const Widget = () => {
             {/* SUMMARY TAB */}
             {activeTab === "summary" && (
               <div className="summary-section">
-                {/* Show all summaries for this chat */}
                 {currentSummaries.map((sum, idx) => (
                   <div key={idx} className="summary-item">
                     <div className="summary-header">
@@ -586,11 +608,10 @@ const Widget = () => {
                     <div className="summary-text">{sum.summary}</div>
                   </div>
                 ))}
-                
-                {/* Always show summarize button for current page */}
+
                 {pageInfo && (
-                  <button 
-                    className="primary-button" 
+                  <button
+                    className="primary-button"
                     onClick={generateSummary}
                     disabled={loading}
                     style={{ marginTop: currentSummaries.length > 0 ? '16px' : '0' }}
@@ -598,9 +619,7 @@ const Widget = () => {
                     {loading ? (
                       <Loader2 className="spinner" size={16}/>
                     ) : (
-                      <>
-                        <Sparkles size={16}/> Summarize Current Page
-                      </>
+                      <><Sparkles size={16}/> Summarize Current Page</>
                     )}
                   </button>
                 )}
@@ -622,7 +641,7 @@ const Widget = () => {
                     </div>
                   ))}
                   <div ref={messagesEndRef} />
-                  
+
                   {loading && (
                     <div className="message assistant">
                       <Loader2 className="spinner" size={16}/>
@@ -634,11 +653,11 @@ const Widget = () => {
                   <input
                     value={question}
                     onChange={(e)=>setQuestion(e.target.value)}
-                    onKeyPress={(e) => e.key === 'Enter' && handleAskQuestion()}
+                    onKeyDown={(e) => e.key === 'Enter' && handleAskQuestion()}
                     placeholder="Ask about this page or compare pages..."
                     disabled={loading}
                   />
-                  <button 
+                  <button
                     onClick={handleAskQuestion}
                     disabled={loading || !question.trim()}
                   >

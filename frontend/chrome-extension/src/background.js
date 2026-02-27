@@ -307,11 +307,12 @@ async function handleExtractContent({ url, html }) {
   return result;
 }
 
-async function handleSummarize({ chunks, style, chatId, url }) {
+async function handleSummarize({ chunks, style, chatId, url, pageTitle }) {
   console.log("[SUMMARIZE] Request received for chat:", chatId);
   return apiRequest('/summarize/', 'POST', {
     page_id: 1,
     url: url || "",
+    page_title: pageTitle || "",
     chunks,
     summary_style: style || "short",
     max_tokens: 512,
@@ -319,16 +320,18 @@ async function handleSummarize({ chunks, style, chatId, url }) {
   });
 }
 
-async function handleAskQuestion({ question, chunks, chatId, chatHistory }) {
+async function handleAskQuestion({ question, chunks, chatId, chatHistory, url, pageTitle }) {
   console.log("[QA] Request received for chat:", chatId);
   console.log("[QA] Number of chunks:", chunks?.length);
   console.log("[QA] Chat history length:", chatHistory?.length);
-  
+
   return apiRequest('/qa/', 'POST', {
     question,
     chunks,
     chat_id: chatId,
-    chat_history: chatHistory
+    chat_history: chatHistory,
+    url: url || "",
+    page_title: pageTitle || ""
   });
 }
 
