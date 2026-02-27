@@ -196,7 +196,8 @@ function googleSignIn() {
     "&response_type=id_token" +
     "&redirect_uri=" + encodeURIComponent(redirectUri) +
     "&scope=openid%20email%20profile" +
-    "&nonce=" + nonce;
+    "&nonce=" + nonce +
+    "&prompt=select_account";  // Always show account chooser on (re)login
 
   console.log("[AUTH] Launching WebAuthFlow...");
 
@@ -276,6 +277,11 @@ async function apiRequest(endpoint, method = 'GET', data = null) {
   console.log("[API] Raw response:", raw);
 
   if (!response.ok) {
+    if (response.status === 401) {
+      // Token expired or invalid — clear it so the widget shows the login screen
+      await chrome.storage.local.remove(['authToken']);
+      throw new Error('SESSION_EXPIRED');
+    }
     throw new Error(raw || 'API request failed');
   }
 

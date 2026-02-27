@@ -67,10 +67,32 @@ const Widget = () => {
   const [question, setQuestion] = useState("");
   const messagesEndRef = useRef(null);
 
+  /* ref that always holds the latest pageChunks — avoids stale closures in async callbacks */
+  const pageChunksRef = useRef({});
+
+  /* Keep ref in sync with state so async callbacks always read fresh data */
+  useEffect(() => { pageChunksRef.current = pageChunks; }, [pageChunks]);
+
   /* ================= SCROLL TO BOTTOM ================= */
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [chatMessages, currentChatId]);
+
+  /* ================= SESSION EXPIRY HANDLER ================= */
+  // Returns true if the response signals an expired/invalid token, and logs the user out.
+  const handleSessionExpired = useCallback(async (res) => {
+    if (res?.error === 'SESSION_EXPIRED' || res?.error === 'Not authenticated') {
+      await chrome.storage.local.remove(["authToken"]);
+      setIsAuthenticated(false);
+      setChats([]);
+      setCurrentChatId(null);
+      setChatSummaries({});
+      setChatMessages({});
+      setPageChunks({});
+      return true;
+    }
+    return false;
+  }, []);
 
   /* ================= LOAD MESSAGES FROM BACKEND ================= */
   const loadChatMessages = useCallback(async (chatId) => {
@@ -79,6 +101,8 @@ const Widget = () => {
       type: "API_CALL",
       data: { endpoint: `/chat/${chatId}`, method: "GET" }
     });
+
+    if (await handleSessionExpired(res)) return;
 
     if (res?.messages && Array.isArray(res.messages)) {
       const messages = res.messages.map(m => ({
@@ -113,6 +137,7 @@ const Widget = () => {
       data: { endpoint: "/chat/", method: "GET" }
     });
 
+    if (await handleSessionExpired(res)) return;
     if (!res || !Array.isArray(res)) return;
 
     setChats(res);
@@ -266,12 +291,33 @@ const Widget = () => {
   };
 
   /* ================= ENSURE CHUNKS FOR URL ================= */
-  const ensureChunks = async (url) => {
-    if (pageChunks[url]?.length > 0) return pageChunks[url];
-    requestPageContent();
-    await new Promise(resolve => setTimeout(resolve, 2000));
-    return pageChunks[url] || null;
-  };
+  // Uses pageChunksRef (always fresh) instead of the stale pageChunks closure.
+  // When chunks are missing, waits for the PAGE_CONTENT_EXTRACTED event via Promise
+  // instead of a blind setTimeout — fixes the "first click fails" bug.
+  const ensureChunks = useCallback((url) => {
+    // Already have them
+    if (pageChunksRef.current[url]?.length > 0) return Promise.resolve(pageChunksRef.current[url]);
+
+    // Request extraction and wait for the event to fire
+    return new Promise((resolve) => {
+      const timeoutId = setTimeout(() => {
+        window.removeEventListener("message", onExtracted);
+        resolve(null); // timed out after 10s
+      }, 10000);
+
+      function onExtracted(event) {
+        if (event.data?.type === "PAGE_CONTENT_EXTRACTED") {
+          clearTimeout(timeoutId);
+          window.removeEventListener("message", onExtracted);
+          const chunks = event.data.data?.text_chunks || null;
+          resolve(chunks?.length > 0 ? chunks : null);
+        }
+      }
+
+      window.addEventListener("message", onExtracted);
+      requestPageContent();
+    });
+  }, []);
 
   /* ================= GENERATE SUMMARY ================= */
   const generateSummary = async () => {
@@ -297,6 +343,7 @@ const Widget = () => {
         }
       });
 
+      if (await handleSessionExpired(res)) return;
       if (res?.error) throw new Error(res.error);
 
       const newSummary = {
@@ -406,6 +453,7 @@ const Widget = () => {
         }
       });
 
+      if (await handleSessionExpired(res)) return;
       if (res?.error) throw new Error(res.error);
 
       const assistantMessage = {
