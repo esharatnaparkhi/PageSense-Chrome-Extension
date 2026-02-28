@@ -16,7 +16,7 @@ from app.schemas.schemas import (
 )
 from app.services.llm_service import LLMService
 from app.services.content_extractor import ContentExtractor
-from app.models.models import User, Chat, Message
+from app.models.models import Chat, Message
 from app.core.config import settings
 import httpx
 
@@ -50,13 +50,8 @@ async def answer_question(
             detail="No content chunks provided"
         )
     
-    # Get user's API key if provided
-    result = await db.execute(select(User).where(User.id == user_id))
-    user = result.scalar_one_or_none()
-    api_key = user.groq_api_key if user else None
-    
-    # Initialize LLM service
-    llm_service = LLMService(api_key=api_key)
+    # Initialize LLM service (uses settings.OPENAI_API_KEY)
+    llm_service = LLMService()
     
     # Get chat context if chat_id provided
     context = None
@@ -219,13 +214,8 @@ async def answer_multipage_question(
                 detail=f"Failed to fetch/extract content from {url}: {str(e)}"
             )
     
-    # Get user's API key
-    result = await db.execute(select(User).where(User.id == user_id))
-    user = result.scalar_one_or_none()
-    api_key = user.groq_api_key if user else None
-    
-    # Initialize LLM service
-    llm_service = LLMService(api_key=api_key)
+    # Initialize LLM service (uses settings.OPENAI_API_KEY)
+    llm_service = LLMService()
     
     # Compare pages
     try:

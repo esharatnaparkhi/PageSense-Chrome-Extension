@@ -10,7 +10,7 @@ from app.core.security import get_current_user
 from app.core.redis_client import get_cache, set_cache, increment_rate_limit
 from app.schemas.schemas import SummarizeRequest, SummarizeResponse
 from app.services.llm_service import LLMService
-from app.models.models import User, Chat, Message, PageVisit
+from app.models.models import Chat, Message, PageVisit
 from app.core.config import settings
 import hashlib
 
@@ -52,13 +52,8 @@ async def summarize_content(
     if cached_result:
         return SummarizeResponse(**cached_result)
     
-    # Get user's API key if provided
-    result = await db.execute(select(User).where(User.id == user_id))
-    user = result.scalar_one_or_none()
-    api_key = user.groq_api_key if user else None
-    
-    # Initialize LLM service
-    llm_service = LLMService(api_key=api_key)
+    # Initialize LLM service (uses settings.OPENAI_API_KEY)
+    llm_service = LLMService()
     
     # Get chat context if chat_id provided
     context = None

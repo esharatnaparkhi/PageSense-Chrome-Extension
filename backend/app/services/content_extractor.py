@@ -33,35 +33,33 @@ class ContentExtractor:
         url: str,
         include_images: bool = False,
     ) -> Dict[str, Any]:
-        """Extract content from HTML"""
-        
-        # Use readability to extract main content
+        """Extract content from HTML with readability + full-page fallback."""
+
         doc = Document(html)
         title = doc.title()
         summary_html = doc.summary()
-        
-        # Parse with BeautifulSoup
+
+        # Parse readability output
         soup = BeautifulSoup(summary_html, 'lxml')
-        
-        # Remove script and style tags
         for tag in soup(['script', 'style', 'nav', 'footer', 'header']):
             tag.decompose()
-        
-        # Extract text
-        text = self.html2text.handle(str(soup))
-        
-        # Clean text
-        text = self._clean_text(text)
-        
-        # Redact sensitive information
+        text = self._clean_text(self.html2text.handle(str(soup)))
+
+        # Fallback: readability strips too much on SPAs / e-commerce / dashboards.
+        # If the extracted text is thin, re-extract from the full page body.
+        if len(text) < 1200:
+            full_soup = BeautifulSoup(html, 'lxml')
+            for tag in full_soup([
+                'script', 'style', 'noscript', 'nav', 'footer', 'header',
+                'aside', 'form', 'button', 'input', 'select', 'textarea',
+            ]):
+                tag.decompose()
+            text = self._clean_text(self.html2text.handle(str(full_soup)))
+
         text = self._redact_sensitive(text)
-        
-        # Create chunks
         chunks = self._create_chunks(text, url)
-        
-        # Extract metadata
-        meta = self._extract_metadata(soup, url)
-        
+        meta = self._extract_metadata(BeautifulSoup(summary_html, 'lxml'), url)
+
         return {
             'text': text,
             'chunks': chunks,
@@ -87,7 +85,7 @@ class ContentExtractor:
         self,
         text: str,
         url: str,
-        chunk_size: int = 1000,
+        chunk_size: int = 1500,
         overlap: int = 200,
     ) -> List[TextChunk]:
         """Split text into overlapping chunks"""

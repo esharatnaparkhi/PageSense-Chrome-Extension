@@ -248,7 +248,7 @@ class LLMService:
     # HELPERS
     # -------------------------------------------------------------------------
 
-    def _prepare_context(self, chunks: List[TextChunk], max_chars: int = 8000) -> str:
+    def _prepare_context(self, chunks: List[TextChunk], max_chars: int = 24000) -> str:
         parts = []
         total = 0
         for chunk in chunks:
