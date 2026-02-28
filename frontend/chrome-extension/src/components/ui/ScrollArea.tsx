@@ -23,7 +23,7 @@ export const ScrollArea = ({ className, children, viewportRef }: ScrollAreaProps
       className="flex touch-none select-none transition-colors duration-150 ease-out data-[orientation=vertical]:w-1.5 data-[orientation=horizontal]:flex-col data-[orientation=horizontal]:h-1.5"
       orientation="vertical"
     >
-      <RadixScrollArea.Thumb className="relative flex-1 rounded-full bg-brand-200 hover:bg-brand-300 transition-colors" />
+      <RadixScrollArea.Thumb className="relative flex-1 rounded-full bg-ps-surface2 hover:bg-ps-accent/30 transition-colors" />
     </RadixScrollArea.Scrollbar>
     <RadixScrollArea.Corner />
   </RadixScrollArea.Root>

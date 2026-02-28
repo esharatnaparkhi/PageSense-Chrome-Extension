@@ -563,8 +563,8 @@ const Widget: React.FC = () => {
   /* ================= LOADING ================= */
   if (checkingAuth) {
     return (
-      <div className="flex items-center justify-center h-full bg-white">
-        <Loader2 size={28} className="text-brand-400 animate-spin" />
+      <div className="flex items-center justify-center h-full bg-ps-bg">
+        <Loader2 size={22} className="text-ps-accent/60 animate-spin" />
       </div>
     );
   }
@@ -582,7 +582,7 @@ const Widget: React.FC = () => {
 
   /* ================= MAIN UI ================= */
   return (
-    <div className="flex flex-col h-full bg-white relative overflow-hidden">
+    <div className="flex flex-col h-full bg-ps-bg relative overflow-hidden">
       {/* ANIMATED SIDEBAR */}
       <AnimatePresence>
         {showChatSidebar && (
@@ -630,36 +630,23 @@ const Widget: React.FC = () => {
       <div className="flex-1 overflow-hidden flex flex-col">
         {!currentChatId ? (
           /* Empty state — no chats yet */
-          <div className="flex flex-col items-center justify-center flex-1 gap-4 px-6">
-            <div className="p-4 bg-brand-50 rounded-2xl">
-              <svg
-                width="32"
-                height="32"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="1.5"
-                className="text-brand-400"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"
-                />
-              </svg>
+          <div className="flex flex-col items-center justify-center flex-1 gap-5 px-6">
+            <div className="text-[64px] font-black text-white/[0.04] leading-none select-none tracking-tighter">
+              +
             </div>
-            <div className="text-center">
-              <p className="text-sm font-medium text-slate-700 mb-1">
-                No active chat
-              </p>
-              <p className="text-xs text-slate-400">
-                Create a chat to start summarizing and asking questions
+            <div className="text-center space-y-1">
+              <p className="text-sm font-bold text-white/70">No active chat</p>
+              <p className="text-xs text-white/25">
+                Start a chat to summarize and ask questions
               </p>
             </div>
-            <Button variant="primary" size="md" onClick={createNewChat}>
-              <Plus size={15} />
+            <button
+              onClick={createNewChat}
+              className="h-9 px-5 rounded-xl bg-ps-accent text-ps-bg text-xs font-bold flex items-center gap-1.5 hover:opacity-90 active:opacity-75 transition-opacity"
+            >
+              <Plus size={13} />
               New Chat
-            </Button>
+            </button>
           </div>
         ) : activeTab === "summary" ? (
           <SummaryView

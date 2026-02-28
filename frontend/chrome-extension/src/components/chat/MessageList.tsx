@@ -15,17 +15,15 @@ export const MessageList = ({ messages, loading }: MessageListProps) => {
 
   useEffect(() => {
     const el = viewportRef.current;
-    if (el) {
-      el.scrollTop = el.scrollHeight;
-    }
+    if (el) el.scrollTop = el.scrollHeight;
   }, [messages, loading]);
 
   return (
     <ScrollArea className="flex-1" viewportRef={viewportRef}>
-      <div className="flex flex-col gap-3 p-3 pb-2">
+      <div className="flex flex-col gap-4 px-4 py-4 pb-3">
         {messages.length === 0 && !loading && (
-          <div className="flex flex-col items-center justify-center py-12 text-slate-400">
-            <p className="text-xs text-center">
+          <div className="flex items-center justify-center h-24">
+            <p className="text-xs text-white/20 tracking-wide">
               Ask anything about this page
             </p>
           </div>
@@ -41,8 +39,9 @@ export const MessageList = ({ messages, loading }: MessageListProps) => {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
           >
-            <div className="bg-slate-100 rounded-2xl rounded-bl-sm px-4 py-3">
-              <Loader2 size={14} className="text-brand-500 animate-spin" />
+            <div className="flex gap-2.5 items-center">
+              <div className="w-0.5 h-5 bg-ps-accent/30 rounded-full" />
+              <Loader2 size={13} className="text-ps-accent animate-spin" />
             </div>
           </motion.div>
         )}

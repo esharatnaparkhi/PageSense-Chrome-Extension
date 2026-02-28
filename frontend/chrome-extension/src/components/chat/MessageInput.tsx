@@ -2,13 +2,11 @@ import React from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { Send } from "lucide-react";
-import { Button } from "@/components/ui/Button";
+import { ArrowUp } from "lucide-react";
 
 const schema = z.object({
   question: z.string().min(1).max(2000),
 });
-
 type FormData = z.infer<typeof schema>;
 
 interface MessageInputProps {
@@ -17,12 +15,7 @@ interface MessageInputProps {
 }
 
 export const MessageInput = ({ onSend, disabled }: MessageInputProps) => {
-  const {
-    register,
-    handleSubmit,
-    reset,
-    formState: { isValid },
-  } = useForm<FormData>({
+  const { register, handleSubmit, reset, formState: { isValid } } = useForm<FormData>({
     resolver: zodResolver(schema),
     mode: "onChange",
     defaultValues: { question: "" },
@@ -43,25 +36,23 @@ export const MessageInput = ({ onSend, disabled }: MessageInputProps) => {
   return (
     <form
       onSubmit={handleSubmit(onSubmit)}
-      className="flex items-center gap-2 px-3 py-2.5 border-t border-slate-100 bg-white shrink-0"
+      className="flex items-center gap-2.5 px-4 py-3 border-t border-white/[0.06] bg-ps-bg shrink-0"
     >
       <input
         {...register("question")}
         onKeyDown={handleKeyDown}
-        placeholder="Ask about this page..."
+        placeholder="Ask about this page…"
         disabled={disabled}
         autoComplete="off"
-        className="flex-1 min-w-0 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-brand-400 focus:border-transparent transition-all duration-150 disabled:opacity-50"
+        className="flex-1 min-w-0 bg-transparent text-sm text-white placeholder-white/20 focus:outline-none disabled:opacity-40 caret-ps-accent"
       />
-      <Button
+      <button
         type="submit"
-        variant="primary"
-        size="icon"
         disabled={disabled || !isValid}
-        className="shrink-0"
+        className="h-7 w-7 rounded-full bg-ps-accent flex items-center justify-center shrink-0 transition-opacity hover:opacity-80 active:scale-95 disabled:opacity-25 disabled:pointer-events-none"
       >
-        <Send size={14} />
-      </Button>
+        <ArrowUp size={13} className="text-ps-bg" strokeWidth={2.5} />
+      </button>
     </form>
   );
 };

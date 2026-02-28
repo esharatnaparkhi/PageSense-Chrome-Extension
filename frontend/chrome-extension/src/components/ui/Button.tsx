@@ -4,20 +4,20 @@ import { cva, type VariantProps } from "class-variance-authority";
 import { cn } from "@/lib/utils";
 
 const buttonVariants = cva(
-  "inline-flex items-center justify-center gap-1.5 rounded-lg font-medium transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-1 disabled:pointer-events-none disabled:opacity-50 select-none",
+  "inline-flex items-center justify-center gap-1.5 rounded-lg font-medium transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ps-accent/50 focus-visible:ring-offset-1 focus-visible:ring-offset-ps-bg disabled:pointer-events-none disabled:opacity-40 select-none",
   {
     variants: {
       variant: {
         primary:
-          "gradient-brand text-white shadow-soft hover:opacity-90 active:opacity-80",
+          "bg-ps-accent text-ps-bg font-semibold shadow-glow-sm hover:bg-ps-accent-hover active:opacity-80",
         secondary:
-          "bg-slate-100 text-slate-700 hover:bg-slate-200 active:bg-slate-300",
+          "bg-ps-surface2 text-white hover:bg-white/10 active:bg-white/5",
         ghost:
-          "text-slate-500 hover:bg-slate-100 hover:text-slate-700 active:bg-slate-200",
+          "text-white/60 hover:bg-white/10 hover:text-white active:bg-white/5",
         destructive:
-          "bg-red-50 text-red-600 hover:bg-red-100 active:bg-red-200",
+          "bg-red-900/30 text-red-400 hover:bg-red-900/50 active:bg-red-900/20",
         outline:
-          "border border-slate-200 text-slate-600 hover:bg-slate-50 active:bg-slate-100",
+          "border border-white/10 text-white/70 hover:bg-white/5 hover:text-white active:bg-white/10",
       },
       size: {
         sm: "h-7 px-2.5 text-xs",

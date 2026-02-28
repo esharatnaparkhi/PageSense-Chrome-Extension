@@ -1,5 +1,5 @@
 import React from "react";
-import { Sparkles, Plus, X, MessageSquare, LogOut } from "lucide-react";
+import { Plus, X, AlignLeft, LogOut } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { cn } from "@/lib/utils";
 
@@ -22,62 +22,60 @@ export const Header = ({
   currentChatIndex,
   totalChats,
 }: HeaderProps) => (
-  <header className="flex items-center gap-2 px-3 h-12 border-b border-slate-100 bg-white shrink-0">
+  <header className="relative flex items-center gap-3 px-4 h-14 bg-ps-surface shrink-0 border-b border-white/[0.06]">
+    {/* Yellow left accent stripe */}
+    <div className="absolute left-0 top-3 bottom-3 w-[3px] bg-ps-accent rounded-r-full" />
+
     <Button
       size="icon-sm"
       variant="ghost"
       onClick={onOpenSidebar}
       title="All chats"
-      className="relative"
+      className="relative ml-1.5 text-white/50 hover:text-white"
     >
-      <MessageSquare size={16} />
+      <AlignLeft size={16} />
       {totalChats > 0 && (
-        <span className="absolute -top-0.5 -right-0.5 h-3.5 w-3.5 rounded-full bg-brand-500 text-white text-[9px] flex items-center justify-center font-semibold leading-none">
+        <span className="absolute -top-1 -right-1 h-3.5 w-3.5 rounded-full bg-ps-accent text-ps-bg text-[9px] flex items-center justify-center font-black leading-none">
           {totalChats}
         </span>
       )}
     </Button>
 
-    <div className="flex items-center gap-1.5 flex-1 min-w-0">
-      <Sparkles size={16} className="text-brand-500 shrink-0" />
-      <span className="font-semibold text-sm text-slate-800 text-gradient-brand">
+    <div className="flex flex-col flex-1 min-w-0">
+      <span className="text-[10px] font-black tracking-[0.18em] uppercase text-ps-accent leading-none">
         PageSense
       </span>
-      {currentChatIndex > 0 && (
-        <span className="text-xs text-slate-400 ml-1">
-          Chat {currentChatIndex}/{totalChats}
+      {currentChatIndex > 0 ? (
+        <span className="text-[10px] text-white/25 leading-none mt-[3px]">
+          chat {currentChatIndex}/{totalChats}
+        </span>
+      ) : (
+        <span className="text-[10px] text-white/25 leading-none mt-[3px]">
+          ai reading assistant
         </span>
       )}
     </div>
 
-    <div className="flex items-center gap-1">
+    <div className="flex items-center gap-0.5">
       <Button
         size="icon-sm"
         variant="ghost"
         onClick={onNewChat}
         disabled={!canAddChat}
         title={canAddChat ? "New chat" : "Max 3 chats"}
-        className={cn(!canAddChat && "opacity-40")}
+        className={cn("text-white/40 hover:text-white", !canAddChat && "opacity-25")}
       >
-        <Plus size={16} />
+        <Plus size={15} />
       </Button>
 
-      <Button
-        size="icon-sm"
-        variant="ghost"
-        onClick={onLogout}
-        title="Logout"
-      >
-        <LogOut size={15} />
+      <Button size="icon-sm" variant="ghost" onClick={onLogout} title="Logout"
+        className="text-white/40 hover:text-white">
+        <LogOut size={14} />
       </Button>
 
-      <Button
-        size="icon-sm"
-        variant="ghost"
-        onClick={onClose}
-        title="Close"
-      >
-        <X size={16} />
+      <Button size="icon-sm" variant="ghost" onClick={onClose} title="Close"
+        className="text-white/40 hover:text-white">
+        <X size={15} />
       </Button>
     </div>
   </header>

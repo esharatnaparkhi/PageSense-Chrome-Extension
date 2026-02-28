@@ -22,96 +22,85 @@ export const ChatSidebar = ({
   onClose,
 }: ChatSidebarProps) => (
   <>
-    {/* Overlay */}
     <motion.div
-      className="absolute inset-0 bg-black/20 z-10"
+      className="absolute inset-0 bg-black/50 z-10 backdrop-blur-[2px]"
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
       onClick={onClose}
     />
 
-    {/* Sidebar panel */}
     <motion.div
-      className="absolute inset-y-0 left-0 w-64 bg-white z-20 flex flex-col shadow-medium"
-      initial={{ x: -264 }}
+      className="absolute inset-y-0 left-0 w-[220px] bg-ps-bg z-20 flex flex-col border-r border-white/[0.07]"
+      initial={{ x: -224 }}
       animate={{ x: 0 }}
-      exit={{ x: -264 }}
-      transition={{ type: "spring", stiffness: 350, damping: 30 }}
+      exit={{ x: -224 }}
+      transition={{ type: "spring", stiffness: 380, damping: 32 }}
     >
       {/* Header */}
-      <div className="flex items-center justify-between px-4 h-12 border-b border-slate-100 shrink-0">
-        <span className="text-sm font-semibold text-slate-700">Chats</span>
-        <Button size="icon-sm" variant="ghost" onClick={onClose}>
-          <X size={16} />
+      <div className="relative flex items-center justify-between px-4 h-14 border-b border-white/[0.06] shrink-0">
+        <div className="absolute left-0 top-3 bottom-3 w-[3px] bg-ps-accent rounded-r-full" />
+        <span className="text-[10px] font-black tracking-[0.18em] uppercase text-ps-accent ml-2">
+          Chats
+        </span>
+        <Button size="icon-sm" variant="ghost" onClick={onClose}
+          className="text-white/30 hover:text-white">
+          <X size={14} />
         </Button>
       </div>
 
-      {/* New chat button */}
-      <div className="px-3 pt-3 shrink-0">
-        <Button
-          variant="outline"
-          size="sm"
+      {/* New chat */}
+      <div className="px-3 pt-3 pb-1 shrink-0">
+        <button
           onClick={onNewChat}
           disabled={chats.length >= 3}
-          className="w-full justify-center gap-1.5"
+          className="w-full h-8 flex items-center justify-center gap-1.5 rounded-lg border border-white/10 text-xs font-semibold text-white/50 hover:text-white hover:border-white/20 transition-colors disabled:opacity-30 disabled:pointer-events-none"
         >
           <Plus size={13} />
           New Chat
-        </Button>
-        {chats.length >= 3 && (
-          <p className="text-[10px] text-slate-400 text-center mt-1">
-            Maximum 3 chats
-          </p>
-        )}
+        </button>
       </div>
 
       {/* Chat list */}
-      <div className="flex-1 overflow-y-auto py-2 px-2">
+      <div className="flex-1 overflow-y-auto py-1 px-2">
         {chats.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-24 text-slate-400">
-            <MessageSquare size={24} className="mb-2 opacity-50" />
+          <div className="flex flex-col items-center justify-center h-20 text-white/20">
             <p className="text-xs">No chats yet</p>
           </div>
         ) : (
-          <div className="space-y-0.5">
-            {chats.map((chat) => (
-              <motion.div
-                key={chat.id}
-                layout
-                className={`group flex items-center gap-2 px-3 py-2.5 rounded-lg cursor-pointer transition-colors duration-100 ${
-                  chat.id === currentChatId
-                    ? "bg-brand-50 text-brand-700"
-                    : "text-slate-600 hover:bg-slate-50"
-                }`}
-                onClick={() => onSwitchChat(chat.id)}
-              >
-                <MessageSquare
-                  size={14}
-                  className={
-                    chat.id === currentChatId
-                      ? "text-brand-500 shrink-0"
-                      : "text-slate-400 shrink-0"
-                  }
-                />
-                <span className="text-xs font-medium flex-1 truncate">
-                  {chat.title}
-                </span>
-                {chat.message_count > 0 && (
-                  <span className="text-[10px] text-slate-400 shrink-0">
-                    {chat.message_count}
-                  </span>
-                )}
-                <Button
-                  size="icon-sm"
-                  variant="ghost"
-                  className="opacity-0 group-hover:opacity-100 h-6 w-6 shrink-0 text-slate-400 hover:text-red-500 hover:bg-red-50"
-                  onClick={(e) => onDeleteChat(chat.id, e)}
+          <div className="space-y-px">
+            {chats.map((chat) => {
+              const active = chat.id === currentChatId;
+              return (
+                <motion.div
+                  key={chat.id}
+                  layout
+                  className={`group relative flex items-center gap-2.5 px-3 py-2.5 rounded-lg cursor-pointer transition-colors duration-100 ${
+                    active ? "bg-white/[0.06]" : "hover:bg-white/[0.03]"
+                  }`}
+                  onClick={() => onSwitchChat(chat.id)}
                 >
-                  <Trash2 size={12} />
-                </Button>
-              </motion.div>
-            ))}
+                  {active && (
+                    <div className="absolute left-0 top-2 bottom-2 w-0.5 bg-ps-accent rounded-r-full" />
+                  )}
+                  <MessageSquare
+                    size={13}
+                    className={active ? "text-ps-accent shrink-0" : "text-white/25 shrink-0"}
+                  />
+                  <span className={`text-xs flex-1 truncate ${active ? "text-white font-semibold" : "text-white/50"}`}>
+                    {chat.title}
+                  </span>
+                  <Button
+                    size="icon-sm"
+                    variant="ghost"
+                    className="opacity-0 group-hover:opacity-100 h-5 w-5 shrink-0 text-white/25 hover:text-red-400 hover:bg-red-900/20 rounded"
+                    onClick={(e) => onDeleteChat(chat.id, e)}
+                  >
+                    <Trash2 size={11} />
+                  </Button>
+                </motion.div>
+              );
+            })}
           </div>
         )}
       </div>

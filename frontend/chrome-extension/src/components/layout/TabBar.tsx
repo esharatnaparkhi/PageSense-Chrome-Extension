@@ -14,27 +14,28 @@ const TABS: { id: ActiveTab; label: string; Icon: React.ElementType }[] = [
 ];
 
 export const TabBar = ({ activeTab, onTabChange }: TabBarProps) => (
-  <div className="flex items-center border-b border-slate-100 bg-white shrink-0 px-1">
-    {TABS.map(({ id, label, Icon }) => (
-      <button
-        key={id}
-        onClick={() => onTabChange(id)}
-        className={`relative flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium transition-colors duration-150 ${
-          activeTab === id
-            ? "text-brand-600"
-            : "text-slate-500 hover:text-slate-700"
-        }`}
-      >
-        <Icon size={14} />
-        {label}
-        {activeTab === id && (
-          <motion.div
-            layoutId="tab-indicator"
-            className="absolute bottom-0 left-0 right-0 h-0.5 gradient-brand rounded-full"
-            transition={{ type: "spring", stiffness: 500, damping: 35 }}
-          />
-        )}
-      </button>
-    ))}
+  <div className="flex items-center bg-ps-bg border-b border-white/[0.06] px-3 py-2 gap-1 shrink-0">
+    {TABS.map(({ id, label, Icon }) => {
+      const isActive = activeTab === id;
+      return (
+        <button
+          key={id}
+          onClick={() => onTabChange(id)}
+          className="relative flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-md transition-colors duration-150 z-0"
+          style={{ color: isActive ? "#0B0B0B" : "rgba(255,255,255,0.35)" }}
+        >
+          {isActive && (
+            <motion.div
+              layoutId="tab-pill"
+              className="absolute inset-0 bg-ps-accent rounded-md"
+              style={{ zIndex: -1 }}
+              transition={{ type: "spring", stiffness: 500, damping: 38 }}
+            />
+          )}
+          <Icon size={12} />
+          {label}
+        </button>
+      );
+    })}
   </div>
 );

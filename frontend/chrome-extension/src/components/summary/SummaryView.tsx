@@ -1,7 +1,6 @@
 import React from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Sparkles, Loader2, FileText } from "lucide-react";
-import { Button } from "@/components/ui/Button";
+import { Loader2 } from "lucide-react";
 import { SummaryCard } from "@/components/summary/SummaryCard";
 import { ScrollArea } from "@/components/ui/ScrollArea";
 import { type ChatSummary } from "@/types";
@@ -21,7 +20,7 @@ export const SummaryView = ({
 }: SummaryViewProps) => (
   <div className="flex flex-col h-full">
     <ScrollArea className="flex-1">
-      <div className="p-3 flex flex-col gap-3">
+      <div className="px-4 flex flex-col">
         <AnimatePresence>
           {summaries.map((sum, i) => (
             <SummaryCard key={`${sum.pageUrl}-${i}`} summary={sum} index={i} />
@@ -30,17 +29,15 @@ export const SummaryView = ({
 
         {summaries.length === 0 && !loading && (
           <motion.div
-            className="flex flex-col items-center justify-center py-12 text-slate-400 gap-3"
+            className="flex flex-col items-center justify-center py-14"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
           >
-            <div className="p-3 bg-slate-50 rounded-2xl">
-              <FileText size={24} className="text-slate-300" />
+            <div className="text-[42px] font-black text-white/5 leading-none mb-3 tracking-tighter select-none">
+              Σ
             </div>
-            <p className="text-xs text-center text-slate-400">
-              No summaries yet.
-              <br />
-              Click the button below to summarize this page.
+            <p className="text-xs text-white/25 text-center tracking-wide">
+              No summaries yet
             </p>
           </motion.div>
         )}
@@ -48,23 +45,18 @@ export const SummaryView = ({
     </ScrollArea>
 
     {hasPageInfo && (
-      <div className="px-3 py-3 border-t border-slate-100 bg-white shrink-0">
-        <Button
-          variant="primary"
-          size="lg"
+      <div className="px-4 py-3 border-t border-white/[0.06] bg-ps-bg shrink-0">
+        <button
           onClick={onSummarize}
           disabled={loading}
-          className="w-full justify-center"
+          className="w-full h-10 rounded-xl bg-ps-accent text-ps-bg text-sm font-bold flex items-center justify-center gap-2 transition-opacity hover:opacity-90 active:opacity-75 disabled:opacity-40 disabled:pointer-events-none"
         >
           {loading ? (
             <Loader2 size={15} className="animate-spin" />
           ) : (
-            <>
-              <Sparkles size={15} />
-              Summarize Current Page
-            </>
+            "Summarize this page"
           )}
-        </Button>
+        </button>
       </div>
     )}
   </div>
