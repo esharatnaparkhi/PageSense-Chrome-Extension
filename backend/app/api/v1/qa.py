@@ -1,101 +1,81 @@
 """
-Question & Answer endpoints
+Question & Answer endpoints (MongoDB version)
 """
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func
+from motor.motor_asyncio import AsyncIOMotorDatabase
 
 from app.core.database import get_db
 from app.core.security import get_current_user
 from app.core.redis_client import increment_rate_limit
-from app.schemas.schemas import (
-    QARequest,
-    QAResponse,
-    MultiPageRequest,
-    MultiPageResponse,
-)
+from app.schemas.schemas import QARequest, QAResponse, ChatMessage
 from app.services.llm_service import LLMService
-from app.services.content_extractor import ContentExtractor
-from app.models.models import Chat, Message
+from app.models.documents import QAEntry
 from app.core.config import settings
-import httpx
+import app.services.chat_service as chat_svc
+import app.services.qa_service as qa_svc
+import app.services.url_service as url_svc
 
 router = APIRouter()
-def get_extractor():
-    return ContentExtractor()
 
 
 @router.post("/", response_model=QAResponse)
 async def answer_question(
     request: QARequest,
     current_user: dict = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncIOMotorDatabase = Depends(get_db),
 ):
-    """Answer question based on page content"""
-    user_id = int(current_user["user_id"])
-    
+    """Answer a question grounded in provided and previously visited page content."""
+    user_id = current_user["user_id"]
+
     # Rate limiting
     rate_key = f"rate_limit:qa:{user_id}"
     count = await increment_rate_limit(rate_key, 60)
     if count > settings.RATE_LIMIT_PER_MINUTE:
-        raise HTTPException(
-            status_code=429,
-            detail="Rate limit exceeded. Please try again later."
-        )
-    
-    # Validate input
+        raise HTTPException(status_code=429, detail="Rate limit exceeded. Please try again later.")
+
     if not request.chunks:
-        raise HTTPException(
-            status_code=400,
-            detail="No content chunks provided"
-        )
-    
-    # Initialize LLM service (uses settings.OPENAI_API_KEY)
-    llm_service = LLMService()
-    
-    # Get chat context if chat_id provided
-    context = None
-    chat_history = request.chat_history
-    
+        raise HTTPException(status_code=400, detail="No content chunks provided")
+
+    # Verify the chat belongs to this user
     if request.chat_id:
-        chat_result = await db.execute(
-            select(Chat).where(Chat.id == request.chat_id, Chat.user_id == user_id)
-        )
-        chat = chat_result.scalar_one_or_none()
-        
-        if chat:
-            # Get recent messages for context
-            messages_result = await db.execute(
-                select(Message)
-                .where(Message.chat_id == chat.id)
-                .order_by(Message.created_at.desc())
-                .limit(10)
-            )
-            messages = list(reversed(messages_result.scalars().all()))
-            
-            from app.schemas.schemas import ChatMessage
-            chat_history = [
-                ChatMessage(role=msg.role, content=msg.content)
-                for msg in messages
-            ]
-            
-            context = chat.context.get("summary", "")
-    
-    # Answer question
+        chat = await chat_svc.get_chat(db, request.chat_id, user_id)
+        if not chat:
+            raise HTTPException(status_code=404, detail="Chat not found")
+
+    # Persist full_context for the current URL so it's available for future
+    # comparative questions from this or other pages in the same chat
+    if request.url and request.chunks:
+        full_context = "\n\n".join(c.text for c in request.chunks)
+        await url_svc.get_or_create(db, request.url, full_context)
+
+    # Build the chunk list to send to the LLM.
+    # For comparative questions, supplement with every other URL's full_context.
+    chunks_to_use = list(request.chunks)
+    if request.chat_id and qa_svc.is_comparative(request.question):
+        extra = await qa_svc.get_all_chat_context(db, request.chat_id)
+        # Prepend other pages; current page chunks go last (highest relevance)
+        other = [c for c in extra if c.source_url != request.url]
+        chunks_to_use = other + chunks_to_use
+
+    # Build chat history from stored QA entries if not provided by client
+    chat_history = request.chat_history
+    if request.chat_id and not chat_history:
+        messages = await qa_svc.get_chat_messages(db, request.chat_id)
+        chat_history = [
+            ChatMessage(role=m["role"], content=m["content"])
+            for m in messages[-20:]
+        ]
+
+    llm_service = LLMService()
     try:
         result = await llm_service.answer_question(
             question=request.question,
-            chunks=request.chunks,
+            chunks=chunks_to_use,
             chat_history=chat_history,
-            context=context,
         )
     except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Question answering failed: {str(e)}"
-        )
-    
-    # Prepare response
+        raise HTTPException(status_code=500, detail=f"Question answering failed: {str(e)}")
+
     response = QAResponse(
         answer=result["answer"],
         sources=result["sources"],
@@ -103,171 +83,17 @@ async def answer_question(
         raw_llm_response=result.get("raw_llm_response"),
         response_time_ms=result["response_time_ms"],
     )
-    
-    # Save to chat if chat_id provided
-    if request.chat_id:
-        chat_result = await db.execute(
-            select(Chat).where(Chat.id == request.chat_id, Chat.user_id == user_id)
-        )
-        chat = chat_result.scalar_one_or_none()
-        
-        if chat:
-            # Check message limit
-            message_count = await db.scalar(
-                select(func.count(Message.id)).where(Message.chat_id == chat.id)
-            )
-            
-            if message_count >= settings.MAX_MESSAGES_PER_CHAT:
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"Chat has reached maximum of {settings.MAX_MESSAGES_PER_CHAT} messages"
-                )
-            
-            # Add user question
-            user_msg = Message(
-                chat_id=chat.id,
-                role="user",
-                content=request.question,
-                extra_data={
-                    "url": request.url or "",
-                    "page_title": request.page_title or "",
-                },
-            )
-            db.add(user_msg)
 
-            # Add assistant answer
-            assistant_msg = Message(
-                chat_id=chat.id,
-                role="assistant",
-                content=result["answer"],
-                extra_data={
-                    "url": request.url or "",
-                    "page_title": request.page_title or "",
-                    "sources": [s.model_dump() for s in result["sources"]],
-                    "confidence": result["confidence"],
-                },
-            )
-            db.add(assistant_msg)
-            
-            await db.commit()
-    
-    return response
-
-
-@router.post("/multi-page", response_model=MultiPageResponse)
-async def answer_multipage_question(
-    request: MultiPageRequest,
-    current_user: dict = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-    extractor: ContentExtractor = Depends(get_extractor),
-):
-    """Answer question comparing multiple pages"""
-    user_id = int(current_user["user_id"])
-    
-    # Rate limiting
-    rate_key = f"rate_limit:qa:{user_id}"
-    count = await increment_rate_limit(rate_key, 60)
-    if count > settings.RATE_LIMIT_PER_MINUTE:
-        raise HTTPException(
-            status_code=429,
-            detail="Rate limit exceeded. Please try again later."
-        )
-    
-    # Validate input
-    if not request.urls or len(request.urls) < 2:
-        raise HTTPException(
-            status_code=400,
-            detail="At least 2 page URLs are required for comparison"
-        )
-    
-    if len(request.urls) > 5:
-        raise HTTPException(
-            status_code=400,
-            detail="Maximum 5 pages can be compared at once"
-        )
-    
-    # Fetch and extract content from all URLs
-    page_chunks_list = []
-    
-    for url in request.urls:
-        try:
-            headers = {
-                "User-Agent": (
-                    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
-                    "AppleWebKit/537.36 (KHTML, like Gecko) "
-                    "Chrome/121.0.0.0 Safari/537.36"
-                )
-            }
-            # Fetch HTML
-            async with httpx.AsyncClient(headers=headers,follow_redirects=True,timeout=15.0) as client:
-                response = await client.get(url, timeout=10.0)
-                response.raise_for_status()
-                html = response.text
-            
-            # Extract content
-            result = extractor.extract_from_html(html=html, url=url)
-            page_chunks_list.append(result['chunks'])
-            
-        except Exception as e:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Failed to fetch/extract content from {url}: {str(e)}"
-            )
-    
-    # Initialize LLM service (uses settings.OPENAI_API_KEY)
-    llm_service = LLMService()
-    
-    # Compare pages
-    try:
-        result = await llm_service.compare_pages(
+    # Persist the QA entry and bump the chat's updated_at
+    if request.chat_id and request.url:
+        await qa_svc.ensure_chat_url(db, request.chat_id, request.url)
+        entry = QAEntry(
             question=request.question,
-            page_chunks_list=page_chunks_list,
-            page_urls=request.urls,
+            answer=result["answer"],
+            sources=[s.model_dump() for s in result["sources"]],
+            type="qa",
         )
-    except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Multi-page comparison failed: {str(e)}"
-        )
-    
-    # Prepare response
-    response = MultiPageResponse(
-        answer=result["answer"],
-        sources=result["sources"],
-        pages_analyzed=result["pages_analyzed"],
-        response_time_ms=result["response_time_ms"],
-    )
-    
-    # Save to chat if chat_id provided
-    if request.chat_id:
-        chat_result = await db.execute(
-            select(Chat).where(Chat.id == request.chat_id, Chat.user_id == user_id)
-        )
-        chat = chat_result.scalar_one_or_none()
-        
-        if chat:
-            # Add user question
-            user_msg = Message(
-                chat_id=chat.id,
-                role="user",
-                content=request.question,
-                extra_data={"pages": request.urls, "type": "multi_page"},
-            )
-            db.add(user_msg)
-            
-            # Add assistant answer
-            assistant_msg = Message(
-                chat_id=chat.id,
-                role="assistant",
-                content=result["answer"],
-                extra_data={
-                    "sources": [s.model_dump() for s in result["sources"]],
-                    "pages_analyzed": result["pages_analyzed"],
-                    "type": "multi_page",
-                },
-            )
-            db.add(assistant_msg)
-            
-            await db.commit()
-    
+        await qa_svc.append_qa(db, request.chat_id, request.url, entry)
+        await chat_svc.touch_chat(db, request.chat_id)
+
     return response

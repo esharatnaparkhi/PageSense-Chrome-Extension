@@ -228,7 +228,10 @@ class LLMService:
             "\"The page doesn't contain information about [topic]. "
             "Here is what I found that may be related: …\"\n"
             "  4. Keep answers focused and concise — avoid padding or repetition\n"
-            "  5. When multiple pages are provided, label which page each piece of information comes from"
+            "  5. When content from multiple pages is provided (marked with [PAGE: <url>] headers), "
+            "clearly attribute each piece of information to its source URL\n"
+            "  6. If the user asks about a specific previously-visited page, use the [PAGE: <url>] "
+            "sections to find and answer from that page's content"
         )
 
     def _get_compare_system_prompt(self) -> str:
@@ -249,14 +252,39 @@ class LLMService:
     # -------------------------------------------------------------------------
 
     def _prepare_context(self, chunks: List[TextChunk], max_chars: int = 24000) -> str:
-        parts = []
-        total = 0
+        from collections import defaultdict
+
+        # Group by source_url to detect multi-page contexts
+        groups: dict = defaultdict(list)
         for chunk in chunks:
-            if total + len(chunk.text) > max_chars:
+            groups[chunk.source_url or ""].append(chunk)
+
+        # Single page (or no url metadata) — simple concatenation
+        if len(groups) == 1:
+            parts, total = [], 0
+            for chunk in chunks:
+                if total + len(chunk.text) > max_chars:
+                    break
+                parts.append(chunk.text)
+                total += len(chunk.text)
+            return "\n\n".join(parts)
+
+        # Multiple pages — label each section so the LLM can attribute answers
+        sections, total = [], 0
+        for url, page_chunks in groups.items():
+            if total >= max_chars:
                 break
-            parts.append(chunk.text)
-            total += len(chunk.text)
-        return "\n\n".join(parts)
+            header = f"[PAGE: {url}]\n" if url else ""
+            body_parts = []
+            for chunk in page_chunks:
+                if total + len(chunk.text) > max_chars:
+                    break
+                body_parts.append(chunk.text)
+                total += len(chunk.text)
+            if body_parts:
+                sections.append(header + "\n\n".join(body_parts))
+
+        return "\n\n---\n\n".join(sections)
 
     def _extract_sources(self, chunks: List[TextChunk]) -> List[SourceReference]:
         return [

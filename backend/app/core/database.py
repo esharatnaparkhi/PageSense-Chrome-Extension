@@ -1,46 +1,62 @@
 """
-Database configuration and session management
+MongoDB connection via Motor (async driver)
 """
-from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
-from sqlalchemy.orm import declarative_base
-
+from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
 from app.core.config import settings
 
-# Convert postgres:// to postgresql+asyncpg://
-database_url = settings.DATABASE_URL.replace("postgresql://", "postgresql+asyncpg://")
-
-# Create async engine
-engine = create_async_engine(
-    database_url,
-    pool_size=settings.DATABASE_POOL_SIZE,
-    max_overflow=settings.DATABASE_MAX_OVERFLOW,
-    echo=settings.DEBUG,
-)
-
-# Create async session factory
-AsyncSessionLocal = async_sessionmaker(
-    engine,
-    class_=AsyncSession,
-    expire_on_commit=False,
-    autocommit=False,
-    autoflush=False,
-)
-
-# Base class for models
-Base = declarative_base()
+_client: AsyncIOMotorClient | None = None
 
 
-async def get_db() -> AsyncSession:
-    """Dependency for getting async database session"""
-    async with AsyncSessionLocal() as session:
-        try:
-            yield session
-        finally:
-            await session.close()
+async def connect_db() -> None:
+    """Open the MongoDB connection and ensure indexes."""
+    global _client
+    _client = AsyncIOMotorClient(settings.MONGODB_URL)
+    db = _client[settings.MONGODB_DB_NAME]
+    await _ensure_indexes(db)
 
 
-async def init_db():
-    """Initialize database tables"""
-    async with engine.begin() as conn:
-        # Create all tables
-        await conn.run_sync(Base.metadata.create_all)
+async def close_db() -> None:
+    """Close the MongoDB connection."""
+    global _client
+    if _client:
+        _client.close()
+        _client = None
+
+
+def get_database() -> AsyncIOMotorDatabase:
+    """Return the active database handle (call after connect_db)."""
+    if _client is None:
+        raise RuntimeError("Database not initialised — call connect_db() first")
+    return _client[settings.MONGODB_DB_NAME]
+
+
+async def get_db() -> AsyncIOMotorDatabase:
+    """FastAPI dependency — yields the database handle."""
+    yield get_database()
+
+
+async def _ensure_indexes(db: AsyncIOMotorDatabase) -> None:
+    """Create all necessary indexes (idempotent)."""
+    from pymongo import ASCENDING, DESCENDING, IndexModel
+
+    # users: unique email
+    await db.users.create_indexes([
+        IndexModel([("email", ASCENDING)], unique=True),
+    ])
+
+    # chats: filter by user, sort by updated_at
+    await db.chats.create_indexes([
+        IndexModel([("user_id", ASCENDING), ("updated_at", DESCENDING)]),
+    ])
+
+    # chat_urls: unique per (chat_id, url_id); also index by chat_id alone
+    await db.chat_urls.create_indexes([
+        IndexModel([("chat_id", ASCENDING), ("url_id", ASCENDING)], unique=True),
+        IndexModel([("chat_id", ASCENDING)]),
+    ])
+
+    # urls (global): _id IS url_id (string) — no extra index needed
+    # But index updated_at for housekeeping queries
+    await db.urls.create_indexes([
+        IndexModel([("updated_at", DESCENDING)]),
+    ])

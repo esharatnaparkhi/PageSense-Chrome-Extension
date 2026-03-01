@@ -6,9 +6,9 @@ import { type Chat } from "@/types";
 
 interface ChatSidebarProps {
   chats: Chat[];
-  currentChatId: number | null;
-  onSwitchChat: (id: number) => void;
-  onDeleteChat: (id: number, e: React.MouseEvent) => void;
+  currentChatId: string | null;
+  onSwitchChat: (id: string) => void;
+  onDeleteChat: (id: string, e: React.MouseEvent) => void;
   onNewChat: () => void;
   onClose: () => void;
 }

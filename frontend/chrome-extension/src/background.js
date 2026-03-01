@@ -316,7 +316,6 @@ async function handleExtractContent({ url, html }) {
 async function handleSummarize({ chunks, style, chatId, url, pageTitle }) {
   console.log("[SUMMARIZE] Request received for chat:", chatId);
   return apiRequest('/summarize/', 'POST', {
-    page_id: 1,
     url: url || "",
     page_title: pageTitle || "",
     chunks,

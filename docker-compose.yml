@@ -1,17 +1,12 @@
 services:
-  postgres:
-    image: postgres:15-alpine
-    container_name: pagesense-postgres
-    environment:
-      POSTGRES_USER: pagesense
-      POSTGRES_PASSWORD: pagesense
-      POSTGRES_DB: pagesense
+  mongodb:
+    image: mongo:7
+    container_name: pagesense-mongodb
     ports:
-      - "5432:5432"
+      - "27017:27017"
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - mongodb_data:/data/db
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U pagesense"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -51,16 +46,17 @@ services:
     environment:
       API_ENV: development
       DEBUG: "True"
-      DATABASE_URL: postgresql://pagesense:pagesense@postgres:5432/pagesense
+      MONGODB_URL: mongodb://mongodb:27017
+      MONGODB_DB_NAME: pagesense
       REDIS_URL: redis://redis:6379/0
       QDRANT_URL: http://qdrant:6333
     depends_on:
-      - postgres
+      - mongodb
       - redis
       - qdrant
-    command: uvicorn app.main:app --host 0.0.0.0 --port 8000
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --no-access-log
 
 volumes:
-  postgres_data:
+  mongodb_data:
   redis_data:
   qdrant_data:

@@ -18,8 +18,8 @@ export const SummaryView = ({
   hasPageInfo,
   onSummarize,
 }: SummaryViewProps) => (
-  <div className="flex flex-col h-full">
-    <ScrollArea className="flex-1">
+  <div className="flex flex-col flex-1 min-h-0">
+    <ScrollArea className="flex-1 min-h-0">
       <div className="px-4 flex flex-col">
         <AnimatePresence>
           {summaries.map((sum, i) => (

@@ -26,7 +26,7 @@ class Token(BaseModel):
 
 
 class UserResponse(BaseModel):
-    id: int
+    id: str                             # MongoDB ObjectId as string
     email: str
     is_active: bool
     created_at: datetime
@@ -42,6 +42,7 @@ class TextChunk(BaseModel):
     start_char: int
     end_char: int
     dom_selector: Optional[str] = None
+    source_url: Optional[str] = None
 
 
 class ExtractRequest(BaseModel):
@@ -62,13 +63,13 @@ class ExtractResponse(BaseModel):
 # ============================================================================
 
 class SummarizeRequest(BaseModel):
-    page_id: Optional[int] = None
+    page_id: Optional[str] = None
     url: Optional[str] = None
     page_title: Optional[str] = None
     chunks: Optional[List[TextChunk]] = None
     summary_style: str = Field(default="short", pattern="^(short|long|bullet)$")
     max_tokens: int = Field(default=512, ge=50, le=2048)
-    chat_id: Optional[int] = None
+    chat_id: Optional[str] = None       # MongoDB ObjectId string
 
 
 class SourceReference(BaseModel):
@@ -96,11 +97,11 @@ class ChatMessage(BaseModel):
 
 class QARequest(BaseModel):
     question: str
-    page_id: Optional[int] = None
+    page_id: Optional[str] = None
     url: Optional[str] = None
     page_title: Optional[str] = None
     chunks: Optional[List[TextChunk]] = None
-    chat_id: Optional[int] = None
+    chat_id: Optional[str] = None       # MongoDB ObjectId string
     chat_history: Optional[List[ChatMessage]] = None
 
 
@@ -121,8 +122,8 @@ class ChatCreate(BaseModel):
 
 
 class ChatResponse(BaseModel):
-    id: int
-    user_id: int
+    id: str                             # MongoDB ObjectId as string
+    user_id: str                        # MongoDB ObjectId as string
     title: Optional[str]
     created_at: datetime
     updated_at: datetime
@@ -130,39 +131,17 @@ class ChatResponse(BaseModel):
 
 
 class MessageResponse(BaseModel):
-    id: int
-    chat_id: int
     role: str
     content: str
-    extra_data: Dict[str, Any]
-    # url and page_title are surfaced from extra_data for convenience
+    extra_data: Dict[str, Any] = Field(default_factory=dict)
     url: Optional[str] = None
     page_title: Optional[str] = None
-    created_at: datetime
+    created_at: Optional[datetime] = None
 
 
 class ChatHistoryResponse(BaseModel):
     chat: ChatResponse
     messages: List[MessageResponse]
-
-
-# ============================================================================
-# Page Visit Schemas
-# ============================================================================
-
-class PageVisitCreate(BaseModel):
-    url: str
-    title: Optional[str] = None
-    summary: Optional[str] = None
-
-
-class PageVisitResponse(BaseModel):
-    id: int
-    chat_id: int
-    url: str
-    title: Optional[str]
-    summary: Optional[str]
-    visited_at: datetime
 
 
 # ============================================================================
@@ -187,9 +166,9 @@ class EmbedResponse(BaseModel):
 class MultiPageRequest(BaseModel):
     """Request for comparing or analyzing multiple pages"""
     question: str
-    page_ids: Optional[List[int]] = None
+    page_ids: Optional[List[str]] = None
     urls: Optional[List[str]] = None
-    chat_id: Optional[int] = None
+    chat_id: Optional[str] = None
 
 
 class MultiPageResponse(BaseModel):

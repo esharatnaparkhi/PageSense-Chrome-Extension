@@ -1,7 +1,7 @@
 export interface Chat {
-  id: number;
+  id: string;
   title: string;
-  user_id: number;
+  user_id: string;
   created_at: string;
   updated_at: string;
   message_count: number;
@@ -30,7 +30,7 @@ export interface PageInfo {
 
 export interface ChatSummary {
   pageUrl: string;
-  pageTitle: string;
+  pageTitle: string | null;
   summary: string;
   timestamp: string | null;
 }
@@ -41,11 +41,12 @@ export interface TextChunk {
   start_char: number;
   end_char: number;
   dom_selector?: string | null;
+  source_url?: string | null;
 }
 
 export type ActiveTab = "summary" | "ask";
 
 export interface Session {
-  currentChatId?: number | null;
+  currentChatId?: string | null;
   pageChunks?: Record<string, TextChunk[]>;
 }

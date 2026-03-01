@@ -27,32 +27,6 @@ import {
 /* ================================================================
    INTENT DETECTION
 ================================================================ */
-const MULTI_PAGE_KEYWORDS = [
-  "compare",
-  "comparison",
-  "difference",
-  "differ",
-  "previous page",
-  "last page",
-  "other page",
-  "another page",
-  "both pages",
-  "between pages",
-  "across pages",
-  "vs",
-  "versus",
-  "than the previous",
-  "compared to",
-  "earlier page",
-  "pages i visited",
-  "all pages",
-];
-
-function isMultiPageQuestion(question: string): boolean {
-  const q = question.toLowerCase();
-  return MULTI_PAGE_KEYWORDS.some((k) => q.includes(k));
-}
-
 /* ================================================================
    TYPES FOR CHROME API RESPONSES
 ================================================================ */
@@ -74,9 +48,9 @@ interface SendMessageResponse {
       type?: string;
     };
   }>;
-  id?: number;
+  id?: string;
   title?: string;
-  currentChatId?: number | null;
+  currentChatId?: string | null;
   pageChunks?: Record<string, TextChunk[]>;
 }
 
@@ -96,16 +70,16 @@ const Widget: React.FC = () => {
 
   /* ================= CHAT STATE ================= */
   const [chats, setChats] = useState<Chat[]>([]);
-  const [currentChatId, setCurrentChatId] = useState<number | null>(null);
+  const [currentChatId, setCurrentChatId] = useState<string | null>(null);
   const [showChatSidebar, setShowChatSidebar] = useState(false);
 
   /* ================= SUMMARY STATE (per chat) ================= */
   const [chatSummaries, setChatSummaries] = useState<
-    Record<number, ChatSummary[]>
+    Record<string, ChatSummary[]>
   >({});
 
   /* ================= Q&A STATE (per chat) ================= */
-  const [chatMessages, setChatMessages] = useState<Record<number, Message[]>>(
+  const [chatMessages, setChatMessages] = useState<Record<string, Message[]>>(
     {}
   );
 
@@ -143,7 +117,7 @@ const Widget: React.FC = () => {
 
   /* ================= LOAD MESSAGES FROM BACKEND ================= */
   const loadChatMessages = useCallback(
-    async (chatId: number) => {
+    async (chatId: string) => {
       if (!chatId) return;
       const res: SendMessageResponse = await chrome.runtime.sendMessage({
         type: "API_CALL",
@@ -254,7 +228,7 @@ const Widget: React.FC = () => {
   };
 
   /* ================= DELETE CHAT ================= */
-  const deleteChat = async (chatId: number, e: React.MouseEvent) => {
+  const deleteChat = async (chatId: string, e: React.MouseEvent) => {
     e.stopPropagation();
 
     const res: boolean = await chrome.runtime.sendMessage({
@@ -285,7 +259,7 @@ const Widget: React.FC = () => {
   };
 
   /* ================= SWITCH CHAT ================= */
-  const switchChat = async (chatId: number) => {
+  const switchChat = async (chatId: string) => {
     setCurrentChatId(chatId);
     setShowChatSidebar(false);
     await loadChatMessages(chatId);
@@ -463,21 +437,19 @@ const Widget: React.FC = () => {
       [currentChatId]: updatedMessages,
     }));
 
-    const multiPage = isMultiPageQuestion(question);
-    let chunksToSend: TextChunk[] = [];
+    // Always ensure the current page is extracted first
+    const currentChunks = await ensureChunks(pageInfo.url);
 
-    if (multiPage) {
-      for (const url of Object.keys(pageChunks)) {
-        if (pageChunks[url]?.length > 0) {
-          chunksToSend = [...chunksToSend, ...pageChunks[url]];
-        }
+    // Build context from ALL pages visited in this chat session.
+    // Current page goes last (most relevant), other pages prepended.
+    let chunksToSend: TextChunk[] = [];
+    for (const url of Object.keys(pageChunks)) {
+      if (url !== pageInfo.url && pageChunks[url]?.length > 0) {
+        chunksToSend = [...chunksToSend, ...pageChunks[url]];
       }
-      if (!pageChunks[pageInfo.url]) {
-        const cur = await ensureChunks(pageInfo.url);
-        if (cur) chunksToSend = [...chunksToSend, ...cur];
-      }
-    } else {
-      chunksToSend = (await ensureChunks(pageInfo.url)) || [];
+    }
+    if (currentChunks && currentChunks.length > 0) {
+      chunksToSend = [...chunksToSend, ...currentChunks];
     }
 
     if (chunksToSend.length === 0) {
@@ -552,8 +524,8 @@ const Widget: React.FC = () => {
   };
 
   /* ================= DERIVED STATE ================= */
-  const currentSummaries = chatSummaries[currentChatId ?? 0] ?? [];
-  const currentMessages = (chatMessages[currentChatId ?? 0] ?? []).filter(
+  const currentSummaries = chatSummaries[currentChatId ?? ""] ?? [];
+  const currentMessages = (chatMessages[currentChatId ?? ""] ?? []).filter(
     (m) => m.type !== "summary"
   );
   const currentChatIndex = currentChatId
@@ -614,6 +586,7 @@ const Widget: React.FC = () => {
       <AnimatePresence>
         {pageInfo && (
           <motion.div
+            className="shrink-0"
             initial={{ opacity: 0, height: 0 }}
             animate={{ opacity: 1, height: "auto" }}
             exit={{ opacity: 0, height: 0 }}
@@ -627,7 +600,7 @@ const Widget: React.FC = () => {
       <TabBar activeTab={activeTab} onTabChange={setActiveTab} />
 
       {/* CONTENT */}
-      <div className="flex-1 overflow-hidden flex flex-col">
+      <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
         {!currentChatId ? (
           /* Empty state — no chats yet */
           <div className="flex flex-col items-center justify-center flex-1 gap-5 px-6">
@@ -657,7 +630,7 @@ const Widget: React.FC = () => {
           />
         ) : (
           /* ASK TAB */
-          <div className="flex flex-col flex-1 overflow-hidden">
+          <div className="flex flex-col flex-1 min-h-0 overflow-hidden">
             <MessageList messages={currentMessages} loading={loading} />
             <MessageInput
               onSend={handleAskQuestion}

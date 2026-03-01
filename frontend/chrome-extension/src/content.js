@@ -212,7 +212,7 @@ function _extractParagraphs() {
   });
 }
 
-function _buildChunks(paragraphs, chunkSize = 900, overlap = 120) {
+function _buildChunks(paragraphs, sourceUrl, chunkSize = 900, overlap = 120) {
   const chunks = [];
   let buffer = '';
   let charOffset = 0;
@@ -227,6 +227,7 @@ function _buildChunks(paragraphs, chunkSize = 900, overlap = 120) {
         start_char: charOffset,
         end_char: charOffset + text.length,
         dom_selector: null,
+        source_url: sourceUrl,
       });
     }
   }
@@ -235,7 +236,6 @@ function _buildChunks(paragraphs, chunkSize = 900, overlap = 120) {
     if (buffer.length + para.length + 2 > chunkSize && buffer.length > 0) {
       flush();
       charOffset += buffer.length;
-      // Carry forward a tail for semantic overlap between chunks
       buffer = buffer.slice(-overlap) + '\n\n' + para;
     } else {
       buffer = buffer ? buffer + '\n\n' + para : para;
@@ -262,7 +262,7 @@ async function extractPageContent() {
 
   // Synchronous client-side extraction — zero network latency
   const paragraphs = _extractParagraphs();
-  const text_chunks = _buildChunks(paragraphs);
+  const text_chunks = _buildChunks(paragraphs, url);
 
   return { text_chunks, title, url };
 }

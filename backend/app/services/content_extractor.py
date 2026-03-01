@@ -117,7 +117,8 @@ class ContentExtractor:
                     text=chunk_text,
                     start_char=start,
                     end_char=end,
-                    dom_selector=None,  # Could be enhanced with actual selectors
+                    dom_selector=None,
+                    source_url=url,
                 ))
                 chunk_index += 1
             

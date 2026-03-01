@@ -3,7 +3,11 @@ PageSense Backend - FastAPI Application
 Main entry point for the API server
 """
 import logging
+import warnings
 from contextlib import asynccontextmanager
+
+# Suppress noisy version-mismatch warnings from transitive dependencies
+warnings.filterwarnings("ignore", category=Warning, module="requests")
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -11,7 +15,7 @@ from fastapi.middleware.gzip import GZipMiddleware
 from prometheus_client import make_asgi_app
 
 from app.core.config import settings
-from app.core.database import init_db
+from app.core.database import connect_db, close_db
 from app.core.redis_client import init_redis, close_redis
 from app.api.v1 import router as api_v1_router
 
@@ -28,14 +32,15 @@ async def lifespan(app: FastAPI):
     """Application lifespan handler"""
     # Startup
     logger.info("Starting PageSense API...")
-    await init_db()
+    await connect_db()
     await init_redis()
     logger.info("PageSense API started successfully")
-    
+
     yield
-    
+
     # Shutdown
     logger.info("Shutting down PageSense API...")
+    await close_db()
     await close_redis()
     logger.info("PageSense API shut down successfully")
 
@@ -91,7 +96,7 @@ async def health_check():
 
 if __name__ == "__main__":
     import uvicorn
-    
+
     uvicorn.run(
         "main:app",
         host=settings.API_HOST,
