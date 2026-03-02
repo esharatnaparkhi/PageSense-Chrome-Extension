@@ -3,9 +3,9 @@ Vector store service using Qdrant for RAG
 """
 from typing import List, Optional
 import hashlib
+from openai import AsyncOpenAI
 from qdrant_client import AsyncQdrantClient
 from qdrant_client.models import Distance, VectorParams, PointStruct
-from sentence_transformers import SentenceTransformer
 
 from app.core.config import settings
 from app.schemas.schemas import TextChunk
@@ -13,22 +13,21 @@ from app.schemas.schemas import TextChunk
 
 class VectorStoreService:
     """Service for vector embeddings and similarity search"""
-    
+
     def __init__(self):
-        """Initialize vector store service"""
         self.client = AsyncQdrantClient(
             url=settings.QDRANT_URL,
             api_key=settings.QDRANT_API_KEY,
         )
+        self.openai = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
         self.collection_name = settings.QDRANT_COLLECTION_NAME
-        self.embedding_model = SentenceTransformer(settings.EMBEDDING_MODEL)
         self.embedding_dimension = settings.EMBEDDING_DIMENSION
-    
+
     async def initialize_collection(self):
         """Create collection if it doesn't exist"""
         collections = await self.client.get_collections()
         collection_names = [c.name for c in collections.collections]
-        
+
         if self.collection_name not in collection_names:
             await self.client.create_collection(
                 collection_name=self.collection_name,
@@ -37,12 +36,24 @@ class VectorStoreService:
                     distance=Distance.COSINE,
                 ),
             )
-    
-    def embed_text(self, text: str) -> List[float]:
-        """Generate embedding for text"""
-        embedding = self.embedding_model.encode(text)
-        return embedding.tolist()
-    
+
+    async def embed_text(self, text: str) -> List[float]:
+        """Generate embedding for a single text via OpenAI"""
+        response = await self.openai.embeddings.create(
+            model=settings.EMBEDDING_MODEL,
+            input=text,
+        )
+        return response.data[0].embedding
+
+    async def _embed_texts(self, texts: List[str]) -> List[List[float]]:
+        """Batch-embed multiple texts in a single OpenAI API call"""
+        response = await self.openai.embeddings.create(
+            model=settings.EMBEDDING_MODEL,
+            input=texts,
+        )
+        # API preserves input order
+        return [item.embedding for item in response.data]
+
     async def add_chunks(
         self,
         chunks: List[TextChunk],
@@ -50,19 +61,20 @@ class VectorStoreService:
         user_id: int,
     ) -> List[str]:
         """Add text chunks to vector store"""
+        if not chunks:
+            return []
+
+        # Single API call for all chunks
+        embeddings = await self._embed_texts([chunk.text for chunk in chunks])
+
         points = []
         vector_ids = []
-        
-        for chunk in chunks:
-            # Generate embedding
-            embedding = self.embed_text(chunk.text)
-            
-            # Create unique vector ID
+
+        for chunk, embedding in zip(chunks, embeddings):
             vector_id = hashlib.md5(
                 f"{user_id}:{page_id}:{chunk.id}".encode()
             ).hexdigest()
-            
-            # Create point
+
             point = PointStruct(
                 id=vector_id,
                 vector=embedding,
@@ -76,19 +88,17 @@ class VectorStoreService:
                     "dom_selector": chunk.dom_selector,
                 },
             )
-            
+
             points.append(point)
             vector_ids.append(vector_id)
-        
-        # Upload points
-        if points:
-            await self.client.upsert(
-                collection_name=self.collection_name,
-                points=points,
-            )
-        
+
+        await self.client.upsert(
+            collection_name=self.collection_name,
+            points=points,
+        )
+
         return vector_ids
-    
+
     async def search(
         self,
         query: str,
@@ -97,30 +107,26 @@ class VectorStoreService:
         page_id: Optional[int] = None,
     ) -> List[dict]:
         """Search for similar chunks"""
-        # Generate query embedding
-        query_embedding = self.embed_text(query)
-        
-        # Build filter
+        query_embedding = await self.embed_text(query)
+
         search_filter = {
             "must": [
                 {"key": "user_id", "match": {"value": user_id}}
             ]
         }
-        
+
         if page_id:
             search_filter["must"].append(
                 {"key": "page_id", "match": {"value": page_id}}
             )
-        
-        # Search
+
         results = await self.client.search(
             collection_name=self.collection_name,
             query_vector=query_embedding,
             query_filter=search_filter,
             limit=limit,
         )
-        
-        # Format results
+
         formatted_results = []
         for result in results:
             formatted_results.append({
@@ -132,9 +138,9 @@ class VectorStoreService:
                 "end_char": result.payload.get("end_char"),
                 "dom_selector": result.payload.get("dom_selector"),
             })
-        
+
         return formatted_results
-    
+
     async def delete_page_vectors(self, page_id: int, user_id: int):
         """Delete all vectors for a page"""
         await self.client.delete(
@@ -148,7 +154,7 @@ class VectorStoreService:
                 }
             },
         )
-    
+
     async def delete_user_vectors(self, user_id: int):
         """Delete all vectors for a user"""
         await self.client.delete(

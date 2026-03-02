@@ -50,9 +50,9 @@ class Settings(BaseSettings):
     QDRANT_API_KEY: str
     QDRANT_COLLECTION_NAME: str = "pagesense_embeddings"
 
-    # Embeddings
-    EMBEDDING_MODEL: str = "sentence-transformers/all-MiniLM-L6-v2"
-    EMBEDDING_DIMENSION: int = 384
+    # Embeddings (OpenAI text-embedding-3-small → 1536 dims)
+    EMBEDDING_MODEL: str = "text-embedding-3-small"
+    EMBEDDING_DIMENSION: int = 1536
 
     # Rate Limiting
     RATE_LIMIT_PER_MINUTE: int = 60
