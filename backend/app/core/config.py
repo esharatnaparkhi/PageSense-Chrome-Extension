@@ -2,7 +2,7 @@
 Configuration settings for PageSense backend
 """
 from typing import List
-from pydantic import model_validator
+from pydantic import model_validator, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -33,7 +33,7 @@ class Settings(BaseSettings):
     OPENAI_TEMPERATURE: float = 0.0
 
     # MongoDB
-    MONGODB_URL: str = "mongodb://localhost:27017"
+    MONGODB_URL: str = Field(..., env="MONGODB_URL")
     MONGODB_DB_NAME: str = "pagesense"
 
     # Redis
