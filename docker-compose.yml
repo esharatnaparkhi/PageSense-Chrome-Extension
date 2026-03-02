@@ -27,12 +27,16 @@ services:
   qdrant:
     image: qdrant/qdrant:latest
     container_name: pagesense-qdrant
-    ports:
-      - "6333:6333"
-      - "6334:6334"
+    # No public ports — only reachable on the internal Docker network.
+    # For local debugging only, uncomment the line below temporarily:
+    # ports: ["6333:6333"]
     volumes:
       - qdrant_data:/qdrant/storage
-
+    # Reads QDRANT__SERVICE__API_KEY directly from backend/.env.
+    # This enforces API-key auth on all Qdrant endpoints.
+    # Qdrant silently ignores every other variable in the file.
+    env_file:
+      - ./backend/.env
 
   backend:
     build:
@@ -41,14 +45,18 @@ services:
     container_name: pagesense-backend
     ports:
       - "8000:8000"
+    # All secrets (QDRANT_API_KEY, etc.) come from env_file only.
+    # No ${VAR} interpolation here — that reads the HOST shell, not the file.
     env_file:
       - ./backend/.env
     environment:
       API_ENV: development
-      DEBUG: "True"
+      # Set to False for production parity; override to True only for local dev.
+      DEBUG: "False"
       MONGODB_URL: mongodb://mongodb:27017
       MONGODB_DB_NAME: pagesense
       REDIS_URL: redis://redis:6379/0
+      # Internal Docker network address — never the public host.
       QDRANT_URL: http://qdrant:6333
     depends_on:
       - mongodb

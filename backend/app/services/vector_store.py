@@ -18,7 +18,7 @@ class VectorStoreService:
         """Initialize vector store service"""
         self.client = AsyncQdrantClient(
             url=settings.QDRANT_URL,
-            api_key=settings.QDRANT_API_KEY if settings.QDRANT_API_KEY else None,
+            api_key=settings.QDRANT_API_KEY,
         )
         self.collection_name = settings.QDRANT_COLLECTION_NAME
         self.embedding_model = SentenceTransformer(settings.EMBEDDING_MODEL)

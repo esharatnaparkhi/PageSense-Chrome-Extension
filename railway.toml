@@ -1,0 +1,31 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Railway deployment configuration — PageSense backend
+#
+# Services overview
+# ─────────────────
+# backend  — this file; FastAPI app built from ./backend/Dockerfile
+# qdrant   — separate Railway service using image qdrant/qdrant:latest
+#            Configure it as PRIVATE (no public domain).
+#            Set QDRANT__SERVICE__API_KEY = <same 64-char hex as QDRANT_API_KEY>
+#
+# Internal networking
+# ───────────────────
+# Railway private networking resolves <service-name>.railway.internal.
+# Set these environment variables on the backend service in the Railway dashboard:
+#   QDRANT_URL=http://qdrant.railway.internal:6333
+#   QDRANT_API_KEY=<64-char hex>            (Railway secret)
+#   DEBUG=False
+#   API_ENV=production
+# ─────────────────────────────────────────────────────────────────────────────
+
+[build]
+builder = "dockerfile"
+dockerfilePath = "backend/Dockerfile"
+buildContext = "backend"
+
+[deploy]
+startCommand = "uvicorn app.main:app --host 0.0.0.0 --port $PORT --workers 2 --no-access-log"
+healthcheckPath = "/health"
+healthcheckTimeout = 30
+restartPolicyType = "on_failure"
+restartPolicyMaxRetries = 3

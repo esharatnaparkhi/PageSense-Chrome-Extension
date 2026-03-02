@@ -2,6 +2,7 @@
 Configuration settings for PageSense backend
 """
 from typing import List
+from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -12,7 +13,9 @@ class Settings(BaseSettings):
     API_HOST: str = "0.0.0.0"
     API_PORT: int = 8000
     API_ENV: str = "development"
-    DEBUG: bool = True
+    # Defaults to False — must be explicitly set to True for local development.
+    # Never enable in production.
+    DEBUG: bool = False
 
     # Google OAuth
     GOOGLE_CLIENT_ID: str
@@ -38,8 +41,13 @@ class Settings(BaseSettings):
     REDIS_CACHE_TTL: int = 86400
 
     # Vector Database (Qdrant)
+    # URL must point to the private internal address in production
+    # (e.g. http://qdrant.railway.internal:6333 on Railway).
     QDRANT_URL: str = "http://localhost:6333"
-    QDRANT_API_KEY: str = ""
+    # Required — must be a strong random value (64-char hex).
+    # Generate with: python scripts/generate_qdrant_key.py
+    # Set QDRANT__SERVICE__API_KEY to the same value on the Qdrant service.
+    QDRANT_API_KEY: str
     QDRANT_COLLECTION_NAME: str = "pagesense_embeddings"
 
     # Embeddings
@@ -65,6 +73,19 @@ class Settings(BaseSettings):
     # Memory Configuration
     MAX_CHATS_PER_USER: int = 3
     MAX_QA_PER_CHAT_URL: int = 200
+
+    @model_validator(mode="after")
+    def _validate_secrets(self) -> "Settings":
+        if not self.QDRANT_API_KEY:
+            raise ValueError(
+                "QDRANT_API_KEY must be set to a non-empty value. "
+                "Generate one with: python scripts/generate_qdrant_key.py"
+            )
+        if len(self.QDRANT_API_KEY) < 32:
+            raise ValueError(
+                "QDRANT_API_KEY is too short — use a 64-character hex string."
+            )
+        return self
 
     model_config = SettingsConfigDict(
         env_file=".env",

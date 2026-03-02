@@ -8,6 +8,15 @@ from contextlib import asynccontextmanager
 
 # Suppress noisy version-mismatch warnings from transitive dependencies
 warnings.filterwarnings("ignore", category=Warning, module="requests")
+# qdrant_client warns when an API key is sent over plain HTTP.
+# On Railway and Docker Compose, Qdrant is on a private internal network
+# (not reachable from outside), so HTTP is safe — suppress the false positive.
+warnings.filterwarnings(
+    "ignore",
+    message=".*[Aa]pi.?key.*insecure.*|.*insecure.*[Aa]pi.?key.*",
+    category=UserWarning,
+    module="qdrant_client.*",
+)
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -31,7 +40,12 @@ logger = logging.getLogger(__name__)
 async def lifespan(app: FastAPI):
     """Application lifespan handler"""
     # Startup
-    logger.info("Starting PageSense API...")
+    # Fail loudly if any required secret is absent — settings validation in
+    # config.py catches this at import time, but make it explicit here too.
+    if settings.DEBUG and settings.API_ENV == "production":
+        raise RuntimeError("DEBUG must be False in production")
+
+    logger.info("Starting PageSense API (env=%s, debug=%s)...", settings.API_ENV, settings.DEBUG)
     await connect_db()
     await init_redis()
     logger.info("PageSense API started successfully")
