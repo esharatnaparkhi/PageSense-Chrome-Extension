@@ -111,7 +111,7 @@ docker-compose restart backend
 - Find differences and similarities
 - Get comprehensive insights
 
-### 🎯 Smart Features
+### ⭐️ Smart Features
 - Automatic sensitive data detection
 - Privacy-first design
 - Fast responses (< 5 seconds)
