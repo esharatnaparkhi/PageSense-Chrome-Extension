@@ -1,89 +1,87 @@
 # PageSense
 
-PageSense is an AI-powered Chrome extension that delivers real-time page summarization and contextual Q&A using Groq LLM, with optional RAG support via Qdrant. It is designed as a lightweight, privacy-aware assistant for understanding and querying web content directly within the browser.
-
-Built with a production-ready FastAPI backend and a Manifest V3 Chrome extension frontend.
-
+PageSense is an AI-powered Chrome extension that summarizes webpages and enables contextual Q&A directly inside the browser.
 ---
+It implements a Retrieval-Augmented Generation (RAG) pipeline that extracts webpage content, indexes it as vector embeddings, retrieves relevant sections via semantic search, and generates grounded responses using GPT-4o.
 
-## What It Does
-- Extracts and cleans main content from any webpage  
-- Generates concise summaries using Groq LLM  
-- Answers contextual questions grounded in page content  
-- Supports multi-page comparison for cross-source analysis  
-- Maintains chat memory (3 chats per user, 50 messages each)  
-- Uses vector embeddings for retrieval-augmented answers  
-- Redacts sensitive information automatically  
+# Features
+- Instant webpage summarization
+- Context-aware Q&A grounded in page content
+- Multi-page comparison across visited URLs
+- Chat-based browsing memory
+- Vector retrieval with source citations
+- Sensitive data redaction before model calls
 
----
+# Architecture
 
-## Architecture Overview
-PageSense consists of two primary components : 
+PageSense consists of three layers.
+- ### Chrome Extension
+React-based widget injected into webpages that extracts content and renders summaries and chat responses.
+- ### AI Backend
+FastAPI service that handles content extraction, embedding generation, vector retrieval, and LLM orchestration.
+- ### Data Layer
+MongoDB → users, chats, URL records, Q&A history
+Qdrant → vector embeddings for semantic retrieval
+Redis → caching and rate limiting
 
-### 1. Chrome Extension (Client Layer)
-- Injects a React-based widget into web pages  
-- Extracts visible content via content scripts  
-- Sends structured requests to backend APIs  
-- Maintains lightweight client-side state  
+# Performance
 
-### 2. FastAPI Backend (AI Layer)
-- Handles authentication and session management  
-- Processes content extraction and normalization  
-- Integrates Groq LLM for summarization and Q&A  
-- Uses Qdrant for embedding storage and retrieval (RAG)  
-- Manages persistent chat memory in PostgreSQL  
-- Applies privacy filtering before LLM processing  
+| Operation            | Latency         |
+| -------------------- | --------------- |
+| Content extraction   | <1s             |
+| Embedding generation | ~50ms per chunk |
+| Vector search        | <20ms           |
+| LLM response         | 1–4s            |
+| End-to-end Q&A       | ~2–5s           |
 
----
+# AI Agent Pipeline
+PageSense follows a modular RAG pipeline.
 
-## AI & Retrieval Pipeline
-1. Page content is extracted and cleaned.
-2. Text is chunked and embedded using sentence transformers.
-3. Embeddings are stored in Qdrant (vector DB).
-4. For Q&A:
-   - Relevant chunks are retrieved via similarity search.
-   - Retrieved context is injected into the LLM prompt.
-5. Groq LLM generates a grounded answer with references.
+- ### Extraction Agent
+Extracts main content from HTML using Readability + BeautifulSoup.
+- ### Chunking Agent
+Splits text into overlapping segments (1500 chars, 200 overlap).
+- ### Embedding Agent
+Generates dense vectors using sentence-transformers/all-MiniLM-L6-v2.
 
-This ensures:
-- Context-aware responses  
-- Reduced hallucination  
-- Source-grounded summaries  
+- ### Retrieval Agent
+Performs cosine similarity search in Qdrant to retrieve top-K relevant chunks.
 
----
+- ### Reasoning Agent
+GPT-4o generates grounded summaries and answers from retrieved context.
 
-## Technical Highlights
-- Groq LLM integration  
-- Retrieval-Augmented Generation (RAG) via Qdrant  
-- Context chunking and embedding pipeline  
-- Chat-scoped persistent memory with strict limits  
-- Sensitive data redaction before model calls  
-- FastAPI-based async backend  
-- Chrome Extension Manifest V3 architecture  
+- ### Attribution Agent
+Ranks chunks via word-overlap scoring and returns the most relevant sources.
 
----
+# RAG Flow
 
-## Memory & Constraints
-- Maximum 3 chats per user  
-- Maximum 50 messages per chat  
-- Chat-specific memory context  
-- Persistent conversation state stored in Postgres  
+```
+Web Page
+   │
+Content Extraction
+   │
+Text Chunking
+   │
+Embedding Generation
+   │
+Qdrant Vector Store
+```
 
----
+### Query Time
 
-## Tech Stack
-**Backend:**  
-- FastAPI, PostgreSQL (SQLAlchemy), Redis  
-- Qdrant (Vector DB)  
-- Groq API  
-- Sentence Transformers (embeddings)
+```
+User Question
+   │
+Query Embedding
+   │
+Vector Search
+   │
+Context Assembly
+   │
+GPT-4o Reasoning
+   │
+Answer + Citations
+```
 
-**Frontend (Extension):**  
-- React 18  
-- Webpack 5  
-- Chrome Extension Manifest V3  
-
-**Infrastructure:**  
-- Docker, Docker Compose  
-
-PageSense demonstrates applied LLM engineering in a real-world browser environment, combining content extraction, retrieval pipelines, memory management, and low-latency inference.
+# Stack summary
+FastAPI · MongoDB · Qdrant · Redis · OpenAI GPT-4o · sentence-transformers · React 18 · TypeScript · TailwindCSS · Framer Motion · Chrome MV3 · Docker Compose
