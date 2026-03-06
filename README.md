@@ -1,7 +1,6 @@
 # PageSense
 
-PageSense is an AI-powered Chrome extension that summarizes webpages and enables contextual Q&A directly inside the browser.
----
+PageSense is an AI-powered Chrome extension that summarizes webpages and enables multi-page contextual Q&A directly inside the browser.
 It implements a Retrieval-Augmented Generation (RAG) pipeline that extracts webpage content, indexes it as vector embeddings, retrieves relevant sections via semantic search, and generates grounded responses using GPT-4o.
 
 # Features
@@ -17,7 +16,7 @@ It implements a Retrieval-Augmented Generation (RAG) pipeline that extracts webp
 PageSense consists of three layers.
 - ### Chrome Extension
 React-based widget injected into webpages that extracts content and renders summaries and chat responses.
-- ### AI Backend
+- ### AI Backend : https://pagesense-chrome-extension-production.up.railway.app/docs 
 FastAPI service that handles content extraction, embedding generation, vector retrieval, and LLM orchestration.
 - ### Data Layer
 MongoDB → users, chats, URL records, Q&A history
@@ -38,11 +37,11 @@ Redis → caching and rate limiting
 PageSense follows a modular RAG pipeline.
 
 - ### Extraction Agent
-Extracts main content from HTML using Readability + BeautifulSoup.
+Extracts main content from HTML using Readability + PyMuPDF.
 - ### Chunking Agent
 Splits text into overlapping segments (1500 chars, 200 overlap).
 - ### Embedding Agent
-Generates dense vectors using sentence-transformers/all-MiniLM-L6-v2.
+Generates dense vectors using openai-embeddings.
 
 - ### Retrieval Agent
 Performs cosine similarity search in Qdrant to retrieve top-K relevant chunks.
@@ -84,4 +83,4 @@ Answer + Citations
 ```
 
 # Stack summary
-FastAPI · MongoDB · Qdrant · Redis · OpenAI GPT-4o · sentence-transformers · React 18 · TypeScript · TailwindCSS · Framer Motion · Chrome MV3 · Docker Compose
+FastAPI · MongoDB · Qdrant · Redis · OpenAI GPT-4o · React 18 · TypeScript · TailwindCSS · Framer Motion · Chrome MV3 · Docker
